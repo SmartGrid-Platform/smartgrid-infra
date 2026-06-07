@@ -1,0 +1,455 @@
+import React, { useState, useEffect } from 'react';
+import { useSelector, useDispatch } from 'react-redux';
+import { authActions } from '../store';
+import { consumerApi, meterApi, billingApi, alertApi } from '../utils/api';
+import {
+  Grid,
+  Card,
+  CardContent,
+  Typography,
+  Box,
+  Button,
+  TextField,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Alert,
+  Chip,
+  List,
+  ListItem,
+  ListItemText,
+  Divider,
+  CircularProgress
+} from '@mui/material';
+import {
+  AccountBalanceWallet as WalletIcon,
+  FlashOn as ConsumptionIcon,
+  Layers as MeterIcon,
+  Payment as RechargeIcon,
+  GetApp as DownloadIcon,
+  Timeline as ChartIcon,
+  CheckCircle as ConnectedIcon,
+  Cancel as DisconnectedIcon
+} from '@mui/icons-material';
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
+
+const ConsumerDashboard = () => {
+  const dispatch = useDispatch();
+  const { user } = useSelector((state) => state.auth);
+  
+  const [profile, setProfile] = useState(null);
+  const [meters, setMeters] = useState([]);
+  const [bills, setBills] = useState([]);
+  const [recharges, setRecharges] = useState([]);
+  const [readingsData, setReadingsData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  
+  // Recharge states
+  const [openRecharge, setOpenRecharge] = useState(false);
+  const [rechargeAmount, setRechargeAmount] = useState('');
+  const [rechargeError, setRechargeError] = useState('');
+  const [rechargeSuccess, setRechargeSuccess] = useState('');
+  const [recharging, setRecharging] = useState(false);
+  
+  // Profile update states
+  const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState('');
+  const [profileSuccess, setProfileSuccess] = useState('');
+  const [profileError, setProfileError] = useState('');
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      // Fetch consumer profile
+      const profRes = await consumerApi.get('/consumers/me');
+      const consumerData = profRes.data;
+      setProfile(consumerData);
+      setPhone(consumerData.phone);
+      setAddress(consumerData.address);
+
+      const consumerId = consumerData.id;
+
+      // Fetch meters
+      const meterRes = await meterApi.get(`/meters/consumer/${consumerId}`);
+      const meterList = meterRes.data || [];
+      setMeters(meterList);
+
+      // Fetch bills
+      const billsRes = await billingApi.get(`/bills/consumer/${consumerId}`);
+      setBills(billsRes.data || []);
+
+      // Fetch recharges
+      const rechargeRes = await billingApi.get(`/recharges/consumer/${consumerId}`);
+      setRecharges(rechargeRes.data || []);
+
+      // Fetch readings for chart (from first meter if available)
+      if (meterList.length > 0) {
+        const readingsRes = await meterApi.get(`/meters/${meterList[0].id}/readings`);
+        const formattedReadings = (readingsRes.data || [])
+          .slice(0, 15) // take latest 15
+          .reverse() // show in chronological order
+          .map((r) => ({
+            date: new Date(r.reading_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+            units: parseFloat(r.units_consumed)
+          }));
+        setReadingsData(formattedReadings);
+      }
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const handleRechargeSubmit = async () => {
+    if (!rechargeAmount || parseFloat(rechargeAmount) <= 0) {
+      setRechargeError('Please enter a valid recharge amount.');
+      return;
+    }
+    setRechargeError('');
+    setRechargeSuccess('');
+    setRecharging(true);
+
+    try {
+      const res = await billingApi.post('/recharges', {
+        consumer_id: profile.id,
+        amount: parseFloat(rechargeAmount)
+      });
+      setRechargeSuccess(res.data.message);
+      setRechargeAmount('');
+      
+      // Update profile locally & refetch data
+      setProfile({
+        ...profile,
+        balance: res.data.newBalance,
+        connection_status: res.data.connectionStatus
+      });
+      
+      // Dispatch updating the user session info
+      dispatch(authActions.updateUserProfile({ connection_status: res.data.connectionStatus }));
+
+      setTimeout(() => {
+        setOpenRecharge(false);
+        setRechargeSuccess('');
+        fetchData();
+      }, 1500);
+    } catch (err) {
+      console.error(err);
+      setRechargeError(err.response?.data?.error || 'Recharge failed.');
+    } finally {
+      setRecharging(false);
+    }
+  };
+
+  const handleUpdateProfile = async (e) => {
+    e.preventDefault();
+    setProfileError('');
+    setProfileSuccess('');
+
+    try {
+      const res = await consumerApi.put(`/consumers/${profile.id}`, { phone, address });
+      setProfileSuccess(res.data.message);
+      setProfile(res.data.consumer);
+    } catch (err) {
+      console.error(err);
+      setProfileError('Failed to update profile details.');
+    }
+  };
+
+  const handleBillDownload = async (billId, fileName) => {
+    try {
+      const response = await billingApi.get(`/bills/${billId}/download`, { responseType: 'blob' });
+      // Create download link
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', fileName);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      console.error('Error downloading bill:', error);
+      alert('Could not download bill file.');
+    }
+  };
+
+  if (loading || !profile) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+        <CircularProgress color="primary" />
+      </Box>
+    );
+  }
+
+  return (
+    <Grid container spacing={3}>
+      {/* 1. Statistics Cards */}
+      <Grid item xs={12} md={4}>
+        <Card sx={{ height: '100%', borderLeft: `6px solid ${profile.connection_status === 'CONNECTED' ? '#00B7C2' : '#d32f2f'}` }}>
+          <CardContent sx={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="subtitle2" color="textSecondary" sx={{ textTransform: 'uppercase', fontWeight: 600 }}>
+                Account Balance
+              </Typography>
+              <WalletIcon sx={{ color: '#00B7C2', fontSize: 28 }} />
+            </Box>
+            <Typography variant="h3" sx={{ fontWeight: 800, mb: 1, fontFamily: 'Outfit' }}>
+              ${parseFloat(profile.balance).toFixed(2)}
+            </Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2 }}>
+              <Chip
+                icon={profile.connection_status === 'CONNECTED' ? <ConnectedIcon /> : <DisconnectedIcon />}
+                label={profile.connection_status}
+                color={profile.connection_status === 'CONNECTED' ? 'success' : 'error'}
+                size="small"
+                sx={{ fontWeight: 'bold' }}
+              />
+              <Button
+                variant="contained"
+                size="small"
+                startIcon={<RechargeIcon />}
+                onClick={() => setOpenRecharge(true)}
+              >
+                Recharge
+              </Button>
+            </Box>
+          </CardContent>
+        </Card>
+      </Grid>
+
+      <Grid item xs={12} md={4}>
+        <Card sx={{ height: '100%' }}>
+          <CardContent>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="subtitle2" color="textSecondary" sx={{ textTransform: 'uppercase', fontWeight: 600 }}>
+                Meter Information
+              </Typography>
+              <MeterIcon sx={{ color: '#00B7C2', fontSize: 28 }} />
+            </Box>
+            {meters.length === 0 ? (
+              <Typography variant="body1" sx={{ color: '#B0BEC5', mt: 2 }}>No meter assigned yet.</Typography>
+            ) : (
+              meters.map(m => (
+                <Box key={m.id} sx={{ mb: 1.5, p: 1.5, borderRadius: 2, border: '1px dashed rgba(0, 183, 194, 0.2)' }}>
+                  <Typography variant="subtitle1" color="secondary" sx={{ fontWeight: 700 }}>
+                    #{m.meter_number}
+                  </Typography>
+                  <Typography variant="body2" color="textSecondary">
+                    Status:{' '}
+                    <span style={{ color: m.status === 'ACTIVE' ? '#2e7d32' : '#d32f2f', fontWeight: 'bold' }}>
+                      {m.status}
+                    </span>
+                  </Typography>
+                  <Typography variant="caption" color="textSecondary">
+                    Assigned: {m.installation_date || 'N/A'}
+                  </Typography>
+                </Box>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      </Grid>
+
+      <Grid item xs={12} md={4}>
+        <Card sx={{ height: '100%' }}>
+          <CardContent sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '100%' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+              <Typography variant="subtitle2" color="textSecondary" sx={{ textTransform: 'uppercase', fontWeight: 600 }}>
+                Profile & Details
+              </Typography>
+              <Typography variant="caption" color="secondary" sx={{ fontWeight: 700 }}>
+                #{profile.consumer_number}
+              </Typography>
+            </Box>
+            <Box component="form" onSubmit={handleUpdateProfile} sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mt: 1 }}>
+              {profileSuccess && <Alert severity="success" sx={{ py: 0, px: 1 }}>{profileSuccess}</Alert>}
+              {profileError && <Alert severity="error" sx={{ py: 0, px: 1 }}>{profileError}</Alert>}
+              <TextField
+                size="small"
+                label="Phone"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                fullWidth
+              />
+              <TextField
+                size="small"
+                label="Address"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                multiline
+                rows={2}
+                fullWidth
+              />
+              <Button type="submit" variant="outlined" size="small" fullWidth>
+                Update Details
+              </Button>
+            </Box>
+          </CardContent>
+        </Card>
+      </Grid>
+
+      {/* 2. Consumption Graph */}
+      <Grid item xs={12}>
+        <Card>
+          <CardContent>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+              <Typography variant="h6" sx={{ fontFamily: 'Outfit', fontWeight: 700, color: '#26C6DA' }}>
+                Usage & Consumption Patterns (kWh)
+              </Typography>
+              <ChartIcon sx={{ color: '#26C6DA' }} />
+            </Box>
+            {readingsData.length === 0 ? (
+              <Box sx={{ py: 6, textAlign: 'center' }}>
+                <Typography variant="body1" sx={{ color: '#B0BEC5' }}>
+                  No usage readings reported yet. Consumption reports will appear here.
+                </Typography>
+              </Box>
+            ) : (
+              <Box sx={{ height: 280, width: '100%' }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={readingsData}>
+                    <defs>
+                      <linearGradient id="colorUnits" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#00B7C2" stopOpacity={0.4}/>
+                        <stop offset="95%" stopColor="#00B7C2" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(38, 198, 218, 0.05)" />
+                    <XAxis dataKey="date" stroke="#B0BEC5" fontSize={11} />
+                    <YAxis stroke="#B0BEC5" fontSize={11} />
+                    <Tooltip contentStyle={{ backgroundColor: '#102733', border: '1px solid rgba(0, 183, 194, 0.3)' }} />
+                    <Area type="monotone" dataKey="units" stroke="#00B7C2" strokeWidth={2} fillOpacity={1} fill="url(#colorUnits)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </Box>
+            )}
+          </CardContent>
+        </Card>
+      </Grid>
+
+      {/* 3. Bills Table & Recharge logs */}
+      <Grid item xs={12} md={7}>
+        <Card sx={{ height: '100%' }}>
+          <CardContent>
+            <Typography variant="h6" sx={{ mb: 2, fontFamily: 'Outfit', fontWeight: 700, color: '#26C6DA' }}>
+              Billing Statements History
+            </Typography>
+            {bills.length === 0 ? (
+              <Typography variant="body2" sx={{ color: '#B0BEC5', py: 2 }}>No billing history available.</Typography>
+            ) : (
+              <TableContainer component={Paper} sx={{ backgroundColor: 'transparent', boxShadow: 'none' }}>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Month</TableCell>
+                      <TableCell>Units Used</TableCell>
+                      <TableCell>Amount</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell align="right">Download</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {bills.map((b) => (
+                      <TableRow key={b.id}>
+                        <TableCell><strong>{b.billing_month}</strong></TableCell>
+                        <TableCell>{parseFloat(b.units_used).toFixed(2)} kWh</TableCell>
+                        <TableCell>${parseFloat(b.amount).toFixed(2)}</TableCell>
+                        <TableCell>
+                          <Chip label={b.status} color="success" size="small" sx={{ fontWeight: 'bold' }} />
+                        </TableCell>
+                        <TableCell align="right">
+                          <IconButton
+                            color="secondary"
+                            onClick={() => handleBillDownload(b.id, b.pdf_path)}
+                          >
+                            <DownloadIcon />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </CardContent>
+        </Card>
+      </Grid>
+
+      <Grid item xs={12} md={5}>
+        <Card sx={{ height: '100%' }}>
+          <CardContent>
+            <Typography variant="h6" sx={{ mb: 2, fontFamily: 'Outfit', fontWeight: 700, color: '#26C6DA' }}>
+              Recent Recharges
+            </Typography>
+            {recharges.length === 0 ? (
+              <Typography variant="body2" sx={{ color: '#B0BEC5', py: 2 }}>No recharge logs found.</Typography>
+            ) : (
+              <List>
+                {recharges.map((r) => (
+                  <React.Fragment key={r.id}>
+                    <ListItem sx={{ py: 1, px: 0 }}>
+                      <ListItemText
+                        primary={
+                          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                            + ${parseFloat(r.amount).toFixed(2)} Balance Added
+                          </Typography>
+                        }
+                        secondary={new Date(r.created_at).toLocaleString()}
+                      />
+                      <Chip label="Success" color="success" size="small" variant="outlined" />
+                    </ListItem>
+                    <Divider sx={{ backgroundColor: 'rgba(38, 198, 218, 0.08)' }} />
+                  </React.Fragment>
+                ))}
+              </List>
+            )}
+          </CardContent>
+        </Card>
+      </Grid>
+
+      {/* Recharge Dialog Modal */}
+      <Dialog open={openRecharge} onClose={() => setOpenRecharge(false)}>
+        <DialogTitle sx={{ backgroundColor: '#102733', borderBottom: '1px solid rgba(0, 183, 194, 0.2)' }}>
+          Recharge Account Balance
+        </DialogTitle>
+        <DialogContent sx={{ backgroundColor: '#102733', pt: 3, minWidth: 320 }}>
+          {rechargeError && <Alert severity="error" sx={{ mb: 2 }}>{rechargeError}</Alert>}
+          {rechargeSuccess && <Alert severity="success" sx={{ mb: 2 }}>{rechargeSuccess}</Alert>}
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Recharge Amount ($)"
+            type="number"
+            fullWidth
+            variant="outlined"
+            value={rechargeAmount}
+            onChange={(e) => setRechargeAmount(e.target.value)}
+            disabled={recharging}
+          />
+        </DialogContent>
+        <DialogActions sx={{ backgroundColor: '#102733', borderTop: '1px solid rgba(0, 183, 194, 0.12)' }}>
+          <Button onClick={() => setOpenRecharge(false)} color="inherit" disabled={recharging}>
+            Cancel
+          </Button>
+          <Button onClick={handleRechargeSubmit} color="secondary" variant="contained" disabled={recharging}>
+            {recharging ? 'Processing...' : 'Submit Payment'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Grid>
+  );
+};
+
+export default ConsumerDashboard;
