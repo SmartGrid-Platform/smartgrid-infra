@@ -91,6 +91,11 @@ const Login = () => {
 
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
+          {/* Info Banner showing Unified Sign-In */}
+          <Alert severity="info" sx={{ mb: 2, backgroundColor: '#0d202a', color: '#B0BEC5', border: '1px solid rgba(0, 183, 194, 0.2)', '& .MuiAlert-icon': { color: '#00B7C2' }, '& .MuiAlert-message': { fontSize: '11.5px', fontFamily: 'Outfit' } }}>
+            <strong>Unified Portal:</strong> Supports all system roles (Consumer, Staff, Supervisor, Admin). Redirection is automatic.
+          </Alert>
+
           <Box component="form" onSubmit={handleSubmit} noValidate>
             <TextField
               margin="normal"
