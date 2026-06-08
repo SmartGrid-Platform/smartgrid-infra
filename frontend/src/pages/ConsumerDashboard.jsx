@@ -65,42 +65,72 @@ const ConsumerDashboard = () => {
   const [profileSuccess, setProfileSuccess] = useState('');
   const [profileError, setProfileError] = useState('');
 
+  const ensureArray = (data, key) => {
+    if (Array.isArray(data)) {
+      return data;
+    }
+    if (data && typeof data === 'object') {
+      if (Array.isArray(data.data)) {
+        return data.data;
+      }
+      if (key && Array.isArray(data[key])) {
+        return data[key];
+      }
+      const firstArray = Object.values(data).find(val => Array.isArray(val));
+      if (firstArray) {
+        return firstArray;
+      }
+    }
+    return [];
+  };
+
   const fetchData = async () => {
     try {
       setLoading(true);
       // Fetch consumer profile
       const profRes = await consumerApi.get('/consumers/me');
       const consumerData = profRes.data;
+      console.log('[DEBUG] Consumer Dashboard Profile Response:', consumerData);
+      
       setProfile(consumerData);
-      setPhone(consumerData.phone);
-      setAddress(consumerData.address);
+      setPhone(consumerData ? consumerData.phone || '' : '');
+      setAddress(consumerData ? consumerData.address || '' : '');
 
-      const consumerId = consumerData.id;
+      const consumerId = consumerData ? consumerData.id : null;
 
-      // Fetch meters
-      const meterRes = await meterApi.get(`/meters/consumer/${consumerId}`);
-      const meterList = meterRes.data || [];
-      setMeters(meterList);
+      if (consumerId) {
+        // Fetch meters
+        const meterRes = await meterApi.get(`/meters/consumer/${consumerId}`);
+        console.log('[DEBUG] Consumer Dashboard Meters Response:', meterRes.data);
+        const meterList = ensureArray(meterRes.data, 'meters');
+        setMeters(meterList);
 
-      // Fetch bills
-      const billsRes = await billingApi.get(`/bills/consumer/${consumerId}`);
-      setBills(billsRes.data || []);
+        // Fetch bills
+        const billsRes = await billingApi.get(`/bills/consumer/${consumerId}`);
+        console.log('[DEBUG] Consumer Dashboard Bills Response:', billsRes.data);
+        setBills(ensureArray(billsRes.data, 'bills'));
 
-      // Fetch recharges
-      const rechargeRes = await billingApi.get(`/recharges/consumer/${consumerId}`);
-      setRecharges(rechargeRes.data || []);
+        // Fetch recharges
+        const rechargeRes = await billingApi.get(`/recharges/consumer/${consumerId}`);
+        console.log('[DEBUG] Consumer Dashboard Recharges Response:', rechargeRes.data);
+        setRecharges(ensureArray(rechargeRes.data, 'recharges'));
 
-      // Fetch readings for chart (from first meter if available)
-      if (meterList.length > 0) {
-        const readingsRes = await meterApi.get(`/meters/${meterList[0].id}/readings`);
-        const formattedReadings = (readingsRes.data || [])
-          .slice(0, 15) // take latest 15
-          .reverse() // show in chronological order
-          .map((r) => ({
-            date: new Date(r.reading_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
-            units: parseFloat(r.units_consumed)
-          }));
-        setReadingsData(formattedReadings);
+        // Fetch readings for chart (from first meter if available)
+        if (meterList.length > 0) {
+          const readingsRes = await meterApi.get(`/meters/${meterList[0].id}/readings`);
+          console.log('[DEBUG] Consumer Dashboard Readings Response:', readingsRes.data);
+          const readingsList = ensureArray(readingsRes.data, 'readings');
+          const formattedReadings = readingsList
+            .slice(0, 15) // take latest 15
+            .reverse() // show in chronological order
+            .map((r) => ({
+              date: new Date(r.reading_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+              units: parseFloat(r.units_consumed || 0)
+            }));
+          setReadingsData(formattedReadings);
+        } else {
+          setReadingsData([]);
+        }
       }
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
