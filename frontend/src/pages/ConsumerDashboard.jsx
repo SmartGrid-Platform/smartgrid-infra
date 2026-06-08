@@ -236,7 +236,7 @@ const ConsumerDashboard = () => {
               <WalletIcon sx={{ color: '#00B7C2', fontSize: 28 }} />
             </Box>
             <Typography variant="h3" sx={{ fontWeight: 800, mb: 1, fontFamily: 'Outfit' }}>
-              ${parseFloat(profile?.balance ?? 0).toFixed(2)}
+              ₹{parseFloat(profile?.balance ?? 0).toFixed(2)}
             </Typography>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2 }}>
               <Chip
@@ -395,7 +395,7 @@ const ConsumerDashboard = () => {
                       <TableRow key={b?.id}>
                         <TableCell><strong>{b?.billing_month}</strong></TableCell>
                         <TableCell>{parseFloat(b?.units_used ?? 0).toFixed(2)} kWh</TableCell>
-                        <TableCell>${parseFloat(b?.amount ?? 0).toFixed(2)}</TableCell>
+                        <TableCell>₹{parseFloat(b?.amount ?? 0).toFixed(2)}</TableCell>
                         <TableCell>
                           <Chip label={b?.status || 'PENDING'} color="success" size="small" sx={{ fontWeight: 'bold' }} />
                         </TableCell>
@@ -433,7 +433,7 @@ const ConsumerDashboard = () => {
                       <ListItemText
                         primary={
                           <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                            + ${parseFloat(r?.amount ?? 0).toFixed(2)} Balance Added
+                            + ₹{parseFloat(r?.amount ?? 0).toFixed(2)} Balance Added
                           </Typography>
                         }
                         secondary={r?.created_at ? new Date(r.created_at).toLocaleString() : '-'}
@@ -460,7 +460,7 @@ const ConsumerDashboard = () => {
           <TextField
             autoFocus
             margin="dense"
-            label="Recharge Amount ($)"
+            label="Recharge Amount (₹)"
             type="number"
             fullWidth
             variant="outlined"

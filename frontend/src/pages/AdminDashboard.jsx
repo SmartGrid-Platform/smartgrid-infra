@@ -338,7 +338,7 @@ const AdminDashboard = () => {
                 <TableRow>
                   <TableCell>ID</TableCell>
                   <TableCell>Tariff Plan Name</TableCell>
-                  <TableCell>Rate Per kWh ($)</TableCell>
+                  <TableCell>Rate Per kWh (₹)</TableCell>
                   <TableCell>Effective Date</TableCell>
                   <TableCell>Created At</TableCell>
                 </TableRow>
@@ -349,7 +349,7 @@ const AdminDashboard = () => {
                     <TableCell>{t.id}</TableCell>
                     <TableCell><strong>{t.tariff_name}</strong></TableCell>
                     <TableCell sx={{ fontWeight: 'bold', color: '#00B7C2' }}>
-                      ${parseFloat(t.rate_per_unit).toFixed(2)}
+                      ₹{parseFloat(t.rate_per_unit).toFixed(2)}
                     </TableCell>
                     <TableCell>{t.effective_date}</TableCell>
                     <TableCell>{new Date(t.created_at).toLocaleDateString()}</TableCell>
@@ -478,7 +478,7 @@ const AdminDashboard = () => {
           {error && <Alert severity="error">{error}</Alert>}
           {success && <Alert severity="success">{success}</Alert>}
           <TextField label="Tariff Name" placeholder="e.g. Standard Peak Tariff" value={newTariff.tariff_name} onChange={(e) => setNewTariff({ ...newTariff, tariff_name: e.target.value })} fullWidth />
-          <TextField label="Rate ($ per kWh)" type="number" placeholder="e.g. 0.18" value={newTariff.rate_per_unit} onChange={(e) => setNewTariff({ ...newTariff, rate_per_unit: e.target.value })} fullWidth />
+          <TextField label="Rate (₹ per kWh)" type="number" placeholder="e.g. 0.18" value={newTariff.rate_per_unit} onChange={(e) => setNewTariff({ ...newTariff, rate_per_unit: e.target.value })} fullWidth />
           <TextField
             type="date"
             label="Effective Date"

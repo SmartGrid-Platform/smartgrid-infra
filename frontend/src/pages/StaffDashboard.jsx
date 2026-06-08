@@ -296,7 +296,7 @@ const StaffDashboard = () => {
                       <Chip label={c?.connection_status || 'DISCONNECTED'} color={c?.connection_status === 'CONNECTED' ? 'success' : 'error'} size="small" />
                     </TableCell>
                     <TableCell align="right" sx={{ fontWeight: 'bold' }}>
-                      ${parseFloat(c?.balance ?? 0).toFixed(2)}
+                      ₹{parseFloat(c?.balance ?? 0).toFixed(2)}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -378,8 +378,8 @@ const StaffDashboard = () => {
                     <TableCell>{b?.consumer && b.consumer.user ? b.consumer.user.name : 'N/A'}</TableCell>
                     <TableCell>{b?.billing_month}</TableCell>
                     <TableCell>{parseFloat(b?.units_used ?? 0).toFixed(2)} kWh</TableCell>
-                    <TableCell>${((parseFloat(b?.amount ?? 0)) / (parseFloat(b?.units_used ?? 0) || 1)).toFixed(2)}</TableCell>
-                    <TableCell sx={{ fontWeight: 'bold' }}>${parseFloat(b?.amount ?? 0).toFixed(2)}</TableCell>
+                    <TableCell>₹{((parseFloat(b?.amount ?? 0)) / (parseFloat(b?.units_used ?? 0) || 1)).toFixed(2)}</TableCell>
+                    <TableCell sx={{ fontWeight: 'bold' }}>₹{parseFloat(b?.amount ?? 0).toFixed(2)}</TableCell>
                     <TableCell>
                       <Chip label={b?.status || 'PENDING'} color="success" size="small" sx={{ fontWeight: 'bold' }} />
                     </TableCell>
@@ -418,7 +418,7 @@ const StaffDashboard = () => {
                     <TableCell>{r?.consumer && r.consumer.user ? r.consumer.user.name : 'N/A'}</TableCell>
                     <TableCell>{r?.created_at ? new Date(r.created_at).toLocaleString() : '-'}</TableCell>
                     <TableCell align="right" sx={{ fontWeight: 'bold', color: '#26C6DA' }}>
-                      ${parseFloat(r?.amount ?? 0).toFixed(2)}
+                      ₹{parseFloat(r?.amount ?? 0).toFixed(2)}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -595,7 +595,7 @@ const StaffDashboard = () => {
             ))}
           </TextField>
           <TextField
-            label="Recharge Amount ($)"
+            label="Recharge Amount (₹)"
             type="number"
             value={newRechargeData.amount}
             onChange={(e) => setNewRechargeData({ ...newRechargeData, amount: e.target.value })}
