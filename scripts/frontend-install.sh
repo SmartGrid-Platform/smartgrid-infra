@@ -15,8 +15,19 @@ fi
 
 # 1. Interactive Prompts
 echo "--- Backend Server Settings ---"
-read -p "Enter Backend Server Private IP [127.0.0.1]: " BACKEND_IP
-BACKEND_IP=${BACKEND_IP:-127.0.0.1}
+read -p "Are you using an Internal Load Balancer? (y/n) [n]: " USE_INTERNAL_ALB
+USE_INTERNAL_ALB=${USE_INTERNAL_ALB:-n}
+
+if [[ "$USE_INTERNAL_ALB" =~ ^[Yy]$ ]]; then
+  read -p "Enter Internal ALB DNS Name: " INTERNAL_ALB_DNS
+  if [ -z "$INTERNAL_ALB_DNS" ]; then
+    echo "Error: Internal ALB DNS Name cannot be empty when using an Internal ALB."
+    exit 1
+  fi
+else
+  read -p "Enter Backend Server Private IP [127.0.0.1]: " BACKEND_IP
+  BACKEND_IP=${BACKEND_IP:-127.0.0.1}
+fi
 
 # 2. Install Node.js & Nginx
 echo "--- Installing Node.js LTS (v18) ---"
@@ -43,7 +54,34 @@ chmod -R 755 /var/www/smartgrid/html
 echo "--- Writing Nginx reverse-proxy virtual host ---"
 NGINX_CONF="/etc/nginx/sites-available/smartgrid"
 
-cat > "$NGINX_CONF" <<EOF
+if [[ "$USE_INTERNAL_ALB" =~ ^[Yy]$ ]]; then
+  # Configuration targeting Internal ALB (Single proxy pass location using path-based routing in the ALB)
+  cat > "$NGINX_CONF" <<EOF
+server {
+    listen 80;
+    server_name _;
+
+    root /var/www/smartgrid/html;
+    index index.html;
+
+    location / {
+        try_files \$uri \$uri/ /index.html;
+    }
+
+    # Proxy all API requests to the Internal ALB (Port 80)
+    location /api/ {
+        proxy_pass http://$INTERNAL_ALB_DNS;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_cache_bypass \$http_upgrade;
+    }
+}
+EOF
+else
+  # Legacy configuration proxying individual ports directly to backend private IP
+  cat > "$NGINX_CONF" <<EOF
 server {
     listen 80;
     server_name _;
@@ -136,6 +174,7 @@ server {
     }
 }
 EOF
+fi
 
 # Activate site configuration & remove default configuration
 echo "--- Activating site config ---"

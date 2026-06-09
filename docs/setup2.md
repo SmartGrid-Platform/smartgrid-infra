@@ -9,7 +9,8 @@ Since a destroy-apply cycle completely deletes and recreates all EC2 instances, 
 ## Pre-requisites & Target Outputs
 
 After running `terraform apply`, note down the outputs from your terminal:
-- `alb_dns_name` (e.g., `smartgrid-alb-123456789.ap-south-1.elb.amazonaws.com`)
+- `external_alb_dns_name` (e.g., `smartgrid-external-alb-123456789.ap-south-1.elb.amazonaws.com`)
+- `internal_alb_dns_name` (e.g., `internal-smartgrid-internal-alb-123456789.ap-south-1.elb.amazonaws.com`)
 - `bastion_public_ip` (e.g., `43.205.212.126`)
 - `frontend_public_ip` (e.g., `43.204.29.125`)
 - `backend_private_ip` (e.g., `10.0.11.160`)
@@ -155,8 +156,9 @@ The frontend server serves the React production bundle via Nginx. Since low-tier
    chmod +x scripts/frontend-install.sh
    sudo ./scripts/frontend-install.sh
    ```
-   Provide the Backend Server Private IP when prompted:
-   - **Backend Server Private IP**: Enter the new `<backend_private_ip>` from Terraform output.
+    Provide the Backend Server Private IP or Internal ALB DNS Name when prompted:
+    - **Are you using an Internal Load Balancer?**: Enter `y`.
+    - **Enter Internal ALB DNS Name**: Enter the `internal_alb_dns_name` output value.
 
 ---
 
@@ -164,7 +166,7 @@ The frontend server serves the React production bundle via Nginx. Since low-tier
 
 1. **Access the Portal**:
    Open a web browser and navigate to the ALB DNS name:
-   `http://<alb_dns_name>`
+   `http://<external_alb_dns_name>`
 2. **Perform Initial Login**:
    Log in with the **Admin credentials** configured in **Step 2.4**.
 3. **Run the Verification Checklist**:

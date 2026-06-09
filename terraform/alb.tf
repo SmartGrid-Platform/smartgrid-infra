@@ -1,11 +1,11 @@
 #################################################
-# Application Load Balancer & Routing
+# Application Load Balancers & Routing
 #################################################
 
-# 1. ALB Security Group (Public Web Access)
+# 1. External ALB Security Group (Public Web Access)
 resource "aws_security_group" "alb_sg" {
   name        = "smartgrid-alb-sg"
-  description = "Allows public HTTP traffic to the ALB"
+  description = "Allows public HTTP traffic to the External ALB"
   vpc_id      = aws_vpc.smartgrid_vpc.id
 
   ingress {
@@ -27,20 +27,58 @@ resource "aws_security_group" "alb_sg" {
   }
 }
 
-# 2. Application Load Balancer
-resource "aws_lb" "smartgrid_alb" {
-  name               = "smartgrid-alb"
+# 2. External Application Load Balancer (Public)
+resource "aws_lb" "external_alb" {
+  name               = "smartgrid-external-alb"
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb_sg.id]
   subnets            = [aws_subnet.public_a.id, aws_subnet.public_b.id]
 
   tags = {
-    Name = "smartgrid-alb"
+    Name = "smartgrid-external-alb"
   }
 }
 
-# 3. Target Groups
+# 3. Internal ALB Security Group (Restricted to Frontend)
+resource "aws_security_group" "internal_alb_sg" {
+  name        = "smartgrid-internal-alb-sg"
+  description = "Allows HTTP traffic from Frontend to Internal ALB"
+  vpc_id      = aws_vpc.smartgrid_vpc.id
+
+  ingress {
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    security_groups = [aws_security_group.frontend_sg.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "smartgrid-internal-alb-sg"
+  }
+}
+
+# 4. Internal Application Load Balancer (Private)
+resource "aws_lb" "internal_alb" {
+  name               = "smartgrid-internal-alb"
+  internal           = true
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.internal_alb_sg.id]
+  subnets            = [aws_subnet.private_app_a.id, aws_subnet.private_app_b.id]
+
+  tags = {
+    Name = "smartgrid-internal-alb"
+  }
+}
+
+# 5. Target Groups
 resource "aws_lb_target_group" "tg_frontend" {
   name     = "tg-frontend"
   port     = 80
@@ -143,7 +181,7 @@ resource "aws_lb_target_group" "tg_alert" {
   }
 }
 
-# 4. Target Group Attachments
+# 6. Target Group Attachments
 resource "aws_lb_target_group_attachment" "frontend_attach" {
   target_group_arn = aws_lb_target_group.tg_frontend.arn
   target_id        = aws_instance.frontend.id
@@ -180,9 +218,11 @@ resource "aws_lb_target_group_attachment" "alert_attach" {
   port             = 3005
 }
 
-# 5. Listener on Port 80
+# 7. Listeners
+
+# HTTP Listener on External ALB (Port 80) -> forwards to Frontend Server
 resource "aws_lb_listener" "http_listener" {
-  load_balancer_arn = aws_lb.smartgrid_alb.arn
+  load_balancer_arn = aws_lb.external_alb.arn
   port              = 80
   protocol          = "HTTP"
 
@@ -192,9 +232,26 @@ resource "aws_lb_listener" "http_listener" {
   }
 }
 
-# 6. Listener Rules for Routing Requests to Backend
+# HTTP Listener on Internal ALB (Port 80) -> routes to Microservices based on paths
+resource "aws_lb_listener" "internal_http_listener" {
+  load_balancer_arn = aws_lb.internal_alb.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type = "fixed-response"
+
+    fixed_response {
+      content_type = "text/plain"
+      message_body = "Not Found"
+      status_code  = "404"
+    }
+  }
+}
+
+# 8. Internal Listener Rules for Routing Requests to Backend Microservices
 resource "aws_lb_listener_rule" "route_auth" {
-  listener_arn = aws_lb_listener.http_listener.arn
+  listener_arn = aws_lb_listener.internal_http_listener.arn
   priority     = 10
 
   action {
@@ -210,7 +267,7 @@ resource "aws_lb_listener_rule" "route_auth" {
 }
 
 resource "aws_lb_listener_rule" "route_consumer" {
-  listener_arn = aws_lb_listener.http_listener.arn
+  listener_arn = aws_lb_listener.internal_http_listener.arn
   priority     = 20
 
   action {
@@ -226,7 +283,7 @@ resource "aws_lb_listener_rule" "route_consumer" {
 }
 
 resource "aws_lb_listener_rule" "route_meter" {
-  listener_arn = aws_lb_listener.http_listener.arn
+  listener_arn = aws_lb_listener.internal_http_listener.arn
   priority     = 30
 
   action {
@@ -242,7 +299,7 @@ resource "aws_lb_listener_rule" "route_meter" {
 }
 
 resource "aws_lb_listener_rule" "route_billing" {
-  listener_arn = aws_lb_listener.http_listener.arn
+  listener_arn = aws_lb_listener.internal_http_listener.arn
   priority     = 40
 
   action {
@@ -262,7 +319,7 @@ resource "aws_lb_listener_rule" "route_billing" {
 }
 
 resource "aws_lb_listener_rule" "route_alert" {
-  listener_arn = aws_lb_listener.http_listener.arn
+  listener_arn = aws_lb_listener.internal_http_listener.arn
   priority     = 50
 
   action {
