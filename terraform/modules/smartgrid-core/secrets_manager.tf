@@ -9,10 +9,10 @@ resource "aws_secretsmanager_secret" "smartgrid_secret" {
 }
 
 resource "aws_secretsmanager_secret_version" "smartgrid_secret_val" {
-  secret_id     = aws_secretsmanager_secret.smartgrid_secret.id
+  secret_id = aws_secretsmanager_secret.smartgrid_secret.id
   secret_string = jsonencode({
     NODE_ENV               = "production"
-    DB_HOST                = aws_instance.database.private_ip
+    DB_HOST                = aws_db_instance.database.address
     DB_PORT                = "3306"
     DB_USER                = "smartgrid_user"
     DB_PASSWORD            = "password"
@@ -32,3 +32,5 @@ resource "aws_secretsmanager_secret_version" "smartgrid_secret_val" {
     SNS_DISCONNECTION_ARN  = module.sns_disconnection.topic_arn
   })
 }
+
+

@@ -8,7 +8,7 @@ resource "aws_vpc" "smartgrid_vpc" {
   enable_dns_hostnames = true
 
   tags = {
-    Name = "smartgrid-vpc"
+    Name = "smartgrid-${var.environment}-vpc"
   }
 }
 
@@ -25,7 +25,7 @@ data "aws_availability_zones" "available" {}
 # Public A
 resource "aws_subnet" "public_a" {
   vpc_id                  = aws_vpc.smartgrid_vpc.id
-  cidr_block              = "10.0.1.0/24"
+  cidr_block              = cidrsubnet(var.vpc_cidr, 8, 1)
   availability_zone       = data.aws_availability_zones.available.names[0]
   map_public_ip_on_launch = true
 
@@ -37,7 +37,7 @@ resource "aws_subnet" "public_a" {
 # Public B
 resource "aws_subnet" "public_b" {
   vpc_id                  = aws_vpc.smartgrid_vpc.id
-  cidr_block              = "10.0.2.0/24"
+  cidr_block              = cidrsubnet(var.vpc_cidr, 8, 2)
   availability_zone       = data.aws_availability_zones.available.names[1]
   map_public_ip_on_launch = true
 
@@ -49,7 +49,7 @@ resource "aws_subnet" "public_b" {
 # Private App A
 resource "aws_subnet" "private_app_a" {
   vpc_id            = aws_vpc.smartgrid_vpc.id
-  cidr_block        = "10.0.11.0/24"
+  cidr_block        = cidrsubnet(var.vpc_cidr, 8, 11)
   availability_zone = data.aws_availability_zones.available.names[0]
 
   tags = {
@@ -60,7 +60,7 @@ resource "aws_subnet" "private_app_a" {
 # Private App B
 resource "aws_subnet" "private_app_b" {
   vpc_id            = aws_vpc.smartgrid_vpc.id
-  cidr_block        = "10.0.12.0/24"
+  cidr_block        = cidrsubnet(var.vpc_cidr, 8, 12)
   availability_zone = data.aws_availability_zones.available.names[1]
 
   tags = {
@@ -71,7 +71,7 @@ resource "aws_subnet" "private_app_b" {
 # Private DB A
 resource "aws_subnet" "private_db_a" {
   vpc_id            = aws_vpc.smartgrid_vpc.id
-  cidr_block        = "10.0.21.0/24"
+  cidr_block        = cidrsubnet(var.vpc_cidr, 8, 21)
   availability_zone = data.aws_availability_zones.available.names[0]
 
   tags = {
@@ -82,7 +82,7 @@ resource "aws_subnet" "private_db_a" {
 # Private DB B
 resource "aws_subnet" "private_db_b" {
   vpc_id            = aws_vpc.smartgrid_vpc.id
-  cidr_block        = "10.0.22.0/24"
+  cidr_block        = cidrsubnet(var.vpc_cidr, 8, 22)
   availability_zone = data.aws_availability_zones.available.names[1]
 
   tags = {
@@ -98,7 +98,7 @@ resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.smartgrid_vpc.id
 
   tags = {
-    Name = "smartgrid-igw"
+    Name = "smartgrid-${var.environment}-igw"
   }
 }
 
@@ -115,7 +115,7 @@ resource "aws_nat_gateway" "nat" {
   subnet_id     = aws_subnet.public_a.id
 
   tags = {
-    Name = "smartgrid-nat"
+    Name = "smartgrid-${var.environment}-nat"
   }
 
   depends_on = [aws_internet_gateway.igw]
@@ -181,3 +181,7 @@ resource "aws_route_table_association" "db_b" {
   subnet_id      = aws_subnet.private_db_b.id
   route_table_id = aws_route_table.db_rt.id
 }
+
+
+
+

@@ -1,38 +1,9 @@
-#################################################
-# Outputs
-#################################################
-
-output "vpc_id" {
-  value       = aws_vpc.smartgrid_vpc.id
-  description = "The ID of the VPC"
+output "cloudfront_url" {
+  value       = module.smartgrid_core.cloudfront_domain_name
+  description = "The CloudFront Distribution Domain Name"
 }
 
-output "bastion_public_ip" {
-  value       = aws_instance.bastion.public_ip
-  description = "Public IP address of the Bastion Host"
-}
-
-output "frontend_public_ip" {
-  value       = aws_instance.frontend.public_ip
-  description = "Public IP address of the Frontend Server"
-}
-
-output "backend_private_ip" {
-  value       = aws_instance.backend.private_ip
-  description = "Private IP address of the Backend Server"
-}
-
-output "database_private_ip" {
-  value       = aws_instance.database.private_ip
-  description = "Private IP address of the Database Server"
-}
-
-output "external_alb_dns_name" {
-  value       = aws_lb.external_alb.dns_name
-  description = "The DNS name of the External Application Load Balancer"
-}
-
-output "internal_alb_dns_name" {
-  value       = aws_lb.internal_alb.dns_name
-  description = "The DNS name of the Internal Application Load Balancer"
+output "alb_dns" {
+  value       = module.smartgrid_core.external_alb_dns_name
+  description = "The Application Load Balancer DNS Name"
 }

@@ -4,7 +4,7 @@
 
 # 1. IAM Role for Backend EC2 Instance
 resource "aws_iam_role" "backend_role" {
-  name = "smartgrid-backend-role-${random_string.suffix.result}"
+  name = "smartgrid-${var.environment}-backend-role-${random_string.suffix.result}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -22,7 +22,7 @@ resource "aws_iam_role" "backend_role" {
 
 # 2. IAM Policy for S3, Secrets Manager, and KMS Encryption Keys
 resource "aws_iam_policy" "backend_policy" {
-  name        = "smartgrid-backend-policy-${random_string.suffix.result}"
+  name        = "smartgrid-${var.environment}-backend-policy-${random_string.suffix.result}"
   description = "Allows backend EC2 instance to access S3 billing bucket, Secrets Manager configurations, and KMS encryption keys"
 
   policy = jsonencode({
@@ -91,6 +91,8 @@ resource "aws_iam_role_policy_attachment" "backend_role_attach" {
 
 # 4. EC2 Instance Profile
 resource "aws_iam_instance_profile" "backend_profile" {
-  name = "smartgrid-backend-profile-${random_string.suffix.result}"
+  name = "smartgrid-${var.environment}-backend-profile-${random_string.suffix.result}"
   role = aws_iam_role.backend_role.name
 }
+
+

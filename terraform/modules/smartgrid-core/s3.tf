@@ -16,7 +16,7 @@ resource "aws_kms_key" "s3_key" {
   enable_key_rotation     = true
 
   tags = {
-    Name = "smartgrid-s3-kms-key"
+    Name = "smartgrid-${var.environment}-s3-kms-key"
   }
 }
 
@@ -27,11 +27,11 @@ resource "aws_kms_alias" "s3_key_alias" {
 
 # 3. S3 Bucket for monthly billing invoices
 resource "aws_s3_bucket" "bills_bucket" {
-  bucket        = "smartgrid-bills-bucket-${random_string.suffix.result}"
+  bucket        = "smartgrid-${var.environment}-bills-bucket-${random_string.suffix.result}"
   force_destroy = true
 
   tags = {
-    Name        = "smartgrid-bills-bucket"
+    Name        = "smartgrid-${var.environment}-bills-bucket"
     Environment = "production"
   }
 }
@@ -58,3 +58,5 @@ resource "aws_s3_bucket_public_access_block" "bills_bucket_acl" {
   ignore_public_acls      = true
   restrict_public_buckets = true
 }
+
+

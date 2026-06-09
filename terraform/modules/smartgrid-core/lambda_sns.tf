@@ -6,14 +6,14 @@ module "sns_low_balance" {
   source  = "terraform-aws-modules/sns/aws"
   version = "~> 6.0"
 
-  name = "smartgrid-low-balance-alerts-${random_string.suffix.result}"
+  name = "smartgrid-${var.environment}-low-balance-alerts-${random_string.suffix.result}"
 }
 
 module "sns_disconnection" {
   source  = "terraform-aws-modules/sns/aws"
   version = "~> 6.0"
 
-  name = "smartgrid-disconnection-notices-${random_string.suffix.result}"
+  name = "smartgrid-${var.environment}-disconnection-notices-${random_string.suffix.result}"
 }
 
 #################################################
@@ -24,12 +24,12 @@ module "lambda_unit_calculator" {
   source  = "terraform-aws-modules/lambda/aws"
   version = "~> 7.0"
 
-  function_name = "smartgrid-unit-calculator-${random_string.suffix.result}"
+  function_name = "smartgrid-${var.environment}-unit-calculator-${random_string.suffix.result}"
   description   = "Calculates units consumed from readings"
   handler       = "index.handler"
   runtime       = "nodejs18.x"
 
-  source_path = "${path.module}/../lambdas/unit_calculator"
+  source_path = "${path.root}/../lambdas/unit_calculator"
   publish     = true
 
   allowed_triggers = {
@@ -44,12 +44,12 @@ module "lambda_bill_generator" {
   source  = "terraform-aws-modules/lambda/aws"
   version = "~> 7.0"
 
-  function_name = "smartgrid-bill-generator-${random_string.suffix.result}"
+  function_name = "smartgrid-${var.environment}-bill-generator-${random_string.suffix.result}"
   description   = "Calculates billing amount based on units and rate"
   handler       = "index.handler"
   runtime       = "nodejs18.x"
 
-  source_path = "${path.module}/../lambdas/bill_generator"
+  source_path = "${path.root}/../lambdas/bill_generator"
   publish     = true
 }
 
@@ -57,12 +57,12 @@ module "lambda_tariff_engine" {
   source  = "terraform-aws-modules/lambda/aws"
   version = "~> 7.0"
 
-  function_name = "smartgrid-tariff-engine-${random_string.suffix.result}"
+  function_name = "smartgrid-${var.environment}-tariff-engine-${random_string.suffix.result}"
   description   = "Resolves active tariff rate"
   handler       = "index.handler"
   runtime       = "nodejs18.x"
 
-  source_path = "${path.module}/../lambdas/tariff_engine"
+  source_path = "${path.root}/../lambdas/tariff_engine"
   publish     = true
 }
 
@@ -77,3 +77,6 @@ resource "aws_sns_topic_subscription" "disconnection_email" {
   protocol  = "email"
   endpoint  = "likhithabhogyam03@gmail.com"
 }
+
+
+
