@@ -52,6 +52,7 @@ const AdminDashboard = () => {
   const [success, setSuccess] = useState('');
 
   // Modals
+  const [deleteConfirm, setDeleteConfirm] = useState({ open: false, type: '', id: null, message: '' });
   const [openRegisterUser, setOpenRegisterUser] = useState(false);
   const [openCreateTariff, setOpenCreateTariff] = useState(false);
   const [openEditUser, setOpenEditUser] = useState(false);
@@ -198,48 +199,30 @@ const AdminDashboard = () => {
     }
   };
 
-  // Delete Consumer
-  const handleDeleteConsumer = async (id) => {
-    if (window.confirm("Are you sure you want to permanently delete this consumer profile and their login user account?")) {
-      setError('');
-      setSuccess('');
-      try {
+  // Delete dialog trigger helper
+  const triggerDeleteConfirm = (type, id, message) => {
+    setDeleteConfirm({ open: true, type, id, message });
+  };
+
+  const handleConfirmDelete = async () => {
+    const { type, id } = deleteConfirm;
+    setDeleteConfirm({ open: false, type: '', id: null, message: '' });
+    setError('');
+    setSuccess('');
+    try {
+      if (type === 'consumer') {
         await consumerApi.delete(`/consumers/${id}`);
         setSuccess('Consumer profile deleted successfully.');
-        fetchData();
-      } catch (err) {
-        setError(err.response?.data?.error || 'Failed to delete consumer.');
-      }
-    }
-  };
-
-  // Delete Meter
-  const handleDeleteMeter = async (id) => {
-    if (window.confirm("Are you sure you want to permanently delete this smart meter and its reading history?")) {
-      setError('');
-      setSuccess('');
-      try {
+      } else if (type === 'meter') {
         await meterApi.delete(`/meters/${id}`);
         setSuccess('Smart meter deleted successfully.');
-        fetchData();
-      } catch (err) {
-        setError(err.response?.data?.error || 'Failed to delete meter.');
-      }
-    }
-  };
-
-  // Delete Bill
-  const handleDeleteBill = async (id) => {
-    if (window.confirm("Are you sure you want to delete this bill? This will also remove the statement HTML file from S3 bucket.")) {
-      setError('');
-      setSuccess('');
-      try {
+      } else if (type === 'bill') {
         await billingApi.delete(`/bills/${id}`);
         setSuccess('Bill deleted successfully.');
-        fetchData();
-      } catch (err) {
-        setError(err.response?.data?.error || 'Failed to delete bill.');
       }
+      fetchData();
+    } catch (err) {
+      setError(err.response?.data?.error || `Failed to delete ${type}.`);
     }
   };
 
@@ -432,7 +415,7 @@ const AdminDashboard = () => {
                       <Chip label={c.connection_status} color={c.connection_status === 'CONNECTED' ? 'success' : 'error'} size="small" />
                     </TableCell>
                     <TableCell align="right">
-                      <Button size="small" variant="contained" color="error" startIcon={<DeleteIcon />} onClick={() => handleDeleteConsumer(c.id)}>
+                      <Button size="small" variant="contained" color="error" startIcon={<DeleteIcon />} onClick={() => triggerDeleteConfirm('consumer', c.id, 'Are you sure you want to permanently delete this consumer profile and their login user account?')}>
                         Delete
                       </Button>
                     </TableCell>
@@ -475,7 +458,7 @@ const AdminDashboard = () => {
                     <TableCell>{m.consumer_id || 'Unassigned'}</TableCell>
                     <TableCell>{m.installation_date || 'N/A'}</TableCell>
                     <TableCell align="right">
-                      <Button size="small" variant="contained" color="error" startIcon={<DeleteIcon />} onClick={() => handleDeleteMeter(m.id)}>
+                      <Button size="small" variant="contained" color="error" startIcon={<DeleteIcon />} onClick={() => triggerDeleteConfirm('meter', m.id, 'Are you sure you want to permanently delete this smart meter and its reading history?')}>
                         Delete
                       </Button>
                     </TableCell>
@@ -517,7 +500,7 @@ const AdminDashboard = () => {
                     </TableCell>
                     <TableCell sx={{ fontSize: '12px', fontFamily: 'monospace' }}>{b.pdf_path}</TableCell>
                     <TableCell align="right">
-                      <Button size="small" variant="contained" color="error" startIcon={<DeleteIcon />} onClick={() => handleDeleteBill(b.id)}>
+                      <Button size="small" variant="contained" color="error" startIcon={<DeleteIcon />} onClick={() => triggerDeleteConfirm('bill', b.id, 'Are you sure you want to delete this bill? This will also remove the statement HTML file from S3 bucket.')}>
                         Delete
                       </Button>
                     </TableCell>
@@ -649,6 +632,21 @@ const AdminDashboard = () => {
           <Button onClick={handleProvisionMeter} color="secondary" variant="contained">Provision</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Custom Delete Confirmation Dialog */}
+      <Dialog open={deleteConfirm.open} onClose={() => setDeleteConfirm({ ...deleteConfirm, open: false })}>
+        <DialogTitle sx={{ backgroundColor: '#102733', fontFamily: 'Outfit', fontWeight: 700 }}>Confirm Deletion</DialogTitle>
+        <DialogContent sx={{ backgroundColor: '#102733', minWidth: 320, pt: 1 }}>
+          <Typography variant="body1" sx={{ fontFamily: 'Outfit', color: '#B0BEC5' }}>
+            {deleteConfirm.message}
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ backgroundColor: '#102733', pb: 2, px: 3 }}>
+          <Button onClick={() => setDeleteConfirm({ ...deleteConfirm, open: false })} color="inherit">Cancel</Button>
+          <Button onClick={handleConfirmDelete} color="error" variant="contained">Delete</Button>
+        </DialogActions>
+      </Dialog>
+
     </Box>
   );
 };
