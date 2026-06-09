@@ -55,8 +55,20 @@ async function bootstrapAdmin() {
       role: 'ADMIN',
       status: 'ACTIVE'
     });
-
     console.log(`\nSuccess: Admin user "${name}" (${email}) created successfully.`);
+
+    // Seed default tariffs
+    const { Tariff } = require('./models');
+    const tariffCount = await Tariff.count();
+    if (tariffCount === 0) {
+      await Tariff.bulkCreate([
+        { tariff_name: 'Standard', rate_per_unit: 0.15, effective_date: '2026-06-01' },
+        { tariff_name: 'Commercial', rate_per_unit: 0.20, effective_date: '2026-06-01' },
+        { tariff_name: 'Industrial', rate_per_unit: 0.25, effective_date: '2026-06-01' }
+      ]);
+      console.log('Success: Standard, Commercial, and Industrial tariffs seeded.');
+    }
+
     process.exit(0);
   } catch (error) {
     console.error('\nError bootstrapping Admin user:', error.message);

@@ -258,7 +258,11 @@ app.post('/api/meters/:id/readings', authenticate, authorize(['STAFF', 'SUPERVIS
     const cost = billResult.amount;
 
     // 3. Deduct from Consumer Balance
-    const consumer = meter.consumer;
+    const consumer = await Consumer.findByPk(meter.consumer_id, { transaction });
+    if (!consumer) {
+      await transaction.rollback();
+      return res.status(404).json({ error: 'Consumer profile not found for this meter' });
+    }
     const oldBalance = parseFloat(consumer.balance);
     const newBalance = oldBalance - cost;
     
