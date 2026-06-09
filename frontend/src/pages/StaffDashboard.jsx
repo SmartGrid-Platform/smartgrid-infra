@@ -416,7 +416,7 @@ const StaffDashboard = () => {
                     <TableCell>{r?.id}</TableCell>
                     <TableCell><strong>{r?.consumer ? r.consumer.consumer_number : 'N/A'}</strong></TableCell>
                     <TableCell>{r?.consumer && r.consumer.user ? r.consumer.user.name : 'N/A'}</TableCell>
-                    <TableCell>{r?.created_at ? new Date(r.created_at).toLocaleString() : '-'}</TableCell>
+                    <TableCell>{(r?.createdAt || r?.created_at) ? new Date(r.createdAt || r.created_at).toLocaleString() : '-'}</TableCell>
                     <TableCell align="right" sx={{ fontWeight: 'bold', color: '#26C6DA' }}>
                       ₹{parseFloat(r?.amount ?? 0).toFixed(2)}
                     </TableCell>

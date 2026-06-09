@@ -170,7 +170,7 @@ const Layout = ({ children }) => {
                           {n.message}
                         </Typography>
                         <Typography variant="caption" sx={{ color: '#777', fontSize: '9px', mt: 0.5 }}>
-                          {new Date(n.created_at).toLocaleString()}
+                          {new Date(n.createdAt || n.created_at).toLocaleString()}
                         </Typography>
                       </MenuItem>
                       <Divider sx={{ backgroundColor: 'rgba(38, 198, 218, 0.08)' }} />

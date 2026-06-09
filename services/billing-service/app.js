@@ -254,8 +254,10 @@ app.post('/api/bills/generate', authenticate, authorize(['STAFF', 'ADMIN']), asy
 
     // 2. Fetch all readings for these meters during that billingMonth
     const meterIds = meters.map(m => m.id);
-    const startDate = new Date(`${billingMonth}-01T00:00:00.000Z`);
-    const endDate = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 1);
+    const year = parseInt(billingMonth.substring(0, 4), 10);
+    const month = parseInt(billingMonth.substring(5, 7), 10);
+    const startDate = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
+    const endDate = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
 
     const readings = await MeterReading.findAll({
       where: {

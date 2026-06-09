@@ -437,7 +437,7 @@ const ConsumerDashboard = () => {
                             + ₹{parseFloat(r?.amount ?? 0).toFixed(2)} Balance Added
                           </Typography>
                         }
-                        secondary={r?.created_at ? new Date(r.created_at).toLocaleString() : '-'}
+                        secondary={(r?.createdAt || r?.created_at) ? new Date(r.createdAt || r.created_at).toLocaleString() : '-'}
                       />
                       <Chip label="Success" color="success" size="small" variant="outlined" />
                     </ListItem>

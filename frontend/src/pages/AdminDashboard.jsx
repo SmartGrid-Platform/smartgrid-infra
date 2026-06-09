@@ -310,7 +310,7 @@ const AdminDashboard = () => {
                     <TableCell>
                       <Chip label={u.status} color={u.status === 'ACTIVE' ? 'success' : 'default'} size="small" />
                     </TableCell>
-                    <TableCell>{new Date(u.created_at).toLocaleDateString()}</TableCell>
+                    <TableCell>{new Date(u.createdAt || u.created_at).toLocaleDateString()}</TableCell>
                     <TableCell align="right">
                       <Button size="small" variant="outlined" color="secondary" onClick={() => handleOpenEditUser(u)}>
                         Edit / Toggle Status
@@ -352,7 +352,7 @@ const AdminDashboard = () => {
                       ₹{parseFloat(t.rate_per_unit).toFixed(2)}
                     </TableCell>
                     <TableCell>{t.effective_date}</TableCell>
-                    <TableCell>{new Date(t.created_at).toLocaleDateString()}</TableCell>
+                    <TableCell>{new Date(t.createdAt || t.created_at).toLocaleDateString()}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

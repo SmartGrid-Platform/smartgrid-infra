@@ -35,25 +35,7 @@ resource "aws_secretsmanager_secret" "smartgrid_secret" {
   recovery_window_in_days = 0 # Force delete immediately on destroy
 }
 
-resource "aws_secretsmanager_secret_version" "smartgrid_secret_version" {
-  secret_id = aws_secretsmanager_secret.smartgrid_secret.id
-  secret_string = jsonencode({
-    NODE_ENV       = "production"
-    DB_HOST        = aws_instance.database.private_ip
-    DB_PORT        = "3306"
-    DB_USER        = "smartgrid_user"
-    DB_PASSWORD    = "password"
-    DB_NAME        = "smartgrid"
-    JWT_SECRET     = "a2b53cdd87431e5630283c448f72ee7b2c91b5da8d1234c9fb66b3f7efc4901f"
-    SMTP_HOST      = "smtp.mailtrap.io"
-    SMTP_PORT      = "2525"
-    SMTP_USER      = ""
-    SMTP_PASS      = ""
-    SENDER_EMAIL   = "noreply@smartgrid.com"
-    S3_BUCKET_NAME = aws_s3_bucket.bills_bucket.id
-    AWS_REGION     = var.aws_region
-  })
-}
+
 
 # 3. IAM Role for Backend EC2 Instance
 resource "aws_iam_role" "backend_role" {
