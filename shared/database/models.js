@@ -1,4 +1,4 @@
-const { DataTypes } = require('sequelize');
+const { DataTypes, Op } = require('sequelize');
 const sequelize = require('./connection');
 
 // User Model
@@ -342,6 +342,7 @@ Inspection.belongsTo(User, { foreignKey: 'assigned_to', as: 'assignedUser' });
 
 module.exports = {
   sequelize,
+  Op,
   User,
   Consumer,
   Meter,
@@ -352,3 +353,4 @@ module.exports = {
   Notification,
   Inspection
 };
+

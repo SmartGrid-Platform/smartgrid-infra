@@ -5,7 +5,7 @@ const morgan = require('morgan');
 const nodemailer = require('nodemailer');
 const swaggerUi = require('swagger-ui-express');
 const swaggerDocument = require('./swagger');
-const { sequelize, Notification, Inspection, User, Consumer } = require('../../shared/database/models');
+const { sequelize, Op, Notification, Inspection, User, Consumer } = require('../../shared/database/models');
 const { authenticate, authorize } = require('./middleware/auth');
 
 const app = express();
@@ -71,7 +71,6 @@ app.get('/health', (req, res) => {
 // GET all notifications (Staff/Supervisor/Admin only)
 app.get('/api/alerts', authenticate, authorize(['STAFF', 'SUPERVISOR', 'ADMIN']), async (req, res) => {
   try {
-    const { Op } = require('sequelize');
     const alerts = await Notification.findAll({
       where: {
         type: {
