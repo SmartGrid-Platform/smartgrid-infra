@@ -198,7 +198,7 @@ app.get('/api/meters/:id/readings', authenticate, async (req, res) => {
 });
 
 // POST add reading, calculate cost, deduct balance, verify status/alerts (Staff/Admin/Meters)
-app.post('/api/meters/:id/readings', authenticate, authorize(['STAFF', 'ADMIN']), async (req, res) => {
+app.post('/api/meters/:id/readings', authenticate, authorize(['STAFF', 'SUPERVISOR', 'ADMIN']), async (req, res) => {
   const { id } = req.params;
   const { units_consumed } = req.body;
 

@@ -138,7 +138,7 @@ app.put('/api/consumers/:id', authenticate, async (req, res) => {
 
 // PUT internal/staff route to update connection status or balance
 // This route is called when consumption is recorded (Meter Service) or balance is recharged (Billing Service)
-app.put('/api/consumers/:id/status', authenticate, authorize(['STAFF', 'ADMIN']), async (req, res) => {
+app.put('/api/consumers/:id/status', authenticate, authorize(['STAFF', 'SUPERVISOR', 'ADMIN']), async (req, res) => {
   const { id } = req.params;
   const { connection_status, balance } = req.body;
 
@@ -160,7 +160,7 @@ app.put('/api/consumers/:id/status', authenticate, authorize(['STAFF', 'ADMIN'])
 });
 
 // POST assign meter to consumer (Staff/Admin only)
-app.post('/api/consumers/assign-meter', authenticate, authorize(['STAFF', 'ADMIN']), async (req, res) => {
+app.post('/api/consumers/assign-meter', authenticate, authorize(['STAFF', 'SUPERVISOR', 'ADMIN']), async (req, res) => {
   const { consumerId, meterId, installationDate } = req.body;
 
   if (!consumerId || !meterId) {

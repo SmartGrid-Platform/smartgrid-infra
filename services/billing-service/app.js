@@ -213,7 +213,7 @@ app.get('/api/bills/consumer/:consumerId', authenticate, async (req, res) => {
 });
 
 // POST generate monthly bill for consumer (Staff/Admin only)
-app.post('/api/bills/generate', authenticate, authorize(['STAFF', 'ADMIN']), async (req, res) => {
+app.post('/api/bills/generate', authenticate, authorize(['STAFF', 'SUPERVISOR', 'ADMIN']), async (req, res) => {
   const { consumerId, billingMonth } = req.body; // billingMonth in YYYY-MM format
 
   if (!consumerId || !billingMonth || !/^\d{4}-\d{2}$/.test(billingMonth)) {

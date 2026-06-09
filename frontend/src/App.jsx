@@ -75,7 +75,7 @@ function AppRoutes() {
           <Route
             path="/staff"
             element={
-              <ProtectedRoute allowedRoles={['STAFF']}>
+              <ProtectedRoute allowedRoles={['STAFF', 'SUPERVISOR', 'ADMIN']}>
                 <ErrorBoundary>
                   <StaffDashboard />
                 </ErrorBoundary>
