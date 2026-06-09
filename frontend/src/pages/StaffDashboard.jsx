@@ -293,6 +293,9 @@ const StaffDashboard = () => {
         Utility Staff Management Portal
       </Typography>
 
+      {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
+      {success && <Alert severity="success" sx={{ mb: 3 }}>{success}</Alert>}
+
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
         <Tabs value={activeTab} onChange={handleTabChange} textColor="secondary" indicatorColor="secondary">
           <Tab label="Consumers" icon={<PeopleIcon />} iconPosition="start" />
