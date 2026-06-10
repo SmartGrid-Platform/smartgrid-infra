@@ -1,0 +1,63 @@
+========================================================================
+SMARTGRID PLATFORM: AWS CLOUD SERVICES & LAMBDA ARCHITECTURE OVERVIEW
+========================================================================
+
+This document provides a detailed breakdown of every AWS Cloud Service and Serverless Lambda function incorporated into the SmartGrid project, explaining the exact technical rationale behind each decision.
+
+------------------------------------------------------------------------
+1. CORE CLOUD SERVICES INCORPORATED (AND WHY)
+------------------------------------------------------------------------
+
+A. Amazon CloudFront (CDN)
+- WHAT IT IS: A global Content Delivery Network.
+- WHY IT'S USED: We use CloudFront as the single entry point for the entire application. It caches the React frontend at "Edge Locations" around the world, meaning users load the site instantly. It also acts as a secure reverse proxy, forwarding API requests (/api/*) to the internal backend load balancer.
+
+B. AWS WAF (Web Application Firewall)
+- WHAT IT IS: A cloud firewall attached directly to CloudFront.
+- WHY IT'S USED: It inspects incoming traffic before it ever reaches our servers. We implemented IP Rate Limiting (blocking IPs that make over 2,000 requests in 5 minutes) to protect the APIs from brute-force login attempts and DDoS attacks.
+
+C. Amazon S3 (Simple Storage Service)
+- WHAT IT IS: Highly scalable object storage.
+- WHY IT'S USED: 
+  1. Frontend Hosting: We store the compiled React SPA here. It's infinitely scalable and costs pennies compared to hosting a frontend on a traditional server. We use Origin Access Control (OAC) to ensure nobody can access the S3 bucket directly without going through CloudFront.
+  2. Document Storage: We use a secondary bucket to securely store the generated monthly PDF/HTML electricity bills.
+
+D. Application Load Balancer (ALB)
+- WHAT IT IS: A Layer 7 HTTP/HTTPS router.
+- WHY IT'S USED: It sits in front of our backend servers. When a request comes in for `/api/billing`, the ALB intelligently routes that specific request to the "Billing Target Group". This enables our microservices architecture by routing traffic based on the URL path.
+
+E. EC2 Auto Scaling Group (ASG) & NAT Gateway
+- WHAT IT IS: A fleet of virtual servers (EC2) that automatically scale up or down.
+- WHY IT'S USED: We host our 5 Node.js microservices (Auth, Consumer, Meter, Billing, Alert) here using PM2. We placed the ASG in a "Private Subnet" so hackers cannot directly access the servers from the internet. We use a NAT Gateway to allow these private servers to securely reach out to the internet to download NPM packages.
+
+F. Amazon RDS (Managed MySQL Database)
+- WHAT IT IS: A fully managed relational database.
+- WHY IT'S USED: Utility billing, consumer data, and meter readings require rigid schemas and ACID transactions (you can't afford to lose payment data). RDS handles automated backups, patching, and Multi-AZ failover for us.
+
+G. AWS Secrets Manager
+- WHAT IT IS: A secure vault for sensitive data.
+- WHY IT'S USED: Hardcoding the database password or JWT signing keys in the source code or Terraform files is a massive security risk. We store them in Secrets Manager, and our EC2 servers fetch them dynamically at boot time.
+
+H. Amazon SNS (Simple Notification Service)
+- WHAT IT IS: A pub/sub messaging service.
+- WHY IT'S USED: When a consumer's balance drops below a threshold, the main API simply "publishes" a message to an SNS topic. SNS asynchronously handles the heavy lifting of formatting and blasting out warning emails/SMS. This decouples the notification logic and keeps the main API lightning fast.
+
+
+------------------------------------------------------------------------
+2. SERVERLESS LAMBDAS & CONCEPTS (AND WHY)
+------------------------------------------------------------------------
+
+A. The "Serverless Offloading" Concept
+- WHY WE USED IT: In Node.js, the event loop is single-threaded. If an EC2 server is busy calculating heavy math or generating a PDF, it will block other users from logging in. To solve this, we used the "Serverless" concept: we offload these heavy, intermittent tasks to AWS Lambda. Lambda spins up isolated compute power for a few milliseconds, does the heavy lifting, returns the result, and dies.
+
+B. Lambda 1: `smartgrid-unit-calculator`
+- WHAT IT DOES: Triggered whenever a staff member inputs a new meter reading. It subtracts the previous reading from the current reading to calculate the exact units consumed in that period.
+- WHY IT'S A LAMBDA: During the end of the month, utility staff upload thousands of readings simultaneously. Isolating this calculation in a Lambda ensures it scales infinitely (AWS runs 1,000 parallel Lambdas instantly) without crashing the main Meter Service API.
+
+C. Lambda 2: `smartgrid-tariff-engine`
+- WHAT IT DOES: Calculates the monetary cost of the consumed units based on dynamic tiers (e.g., first 100 units cost $0.10, next 100 cost $0.20) and consumer types (domestic vs commercial).
+- WHY IT'S A LAMBDA: Tariff rules change frequently based on government regulations. By decoupling the pricing logic into a standalone Lambda, developers can update the tariff algorithms without having to redeploy or restart the entire EC2 backend.
+
+D. Lambda 3: `smartgrid-bill-generator`
+- WHAT IT DOES: Takes the final billing data, renders a professional HTML/PDF monthly invoice, and uploads it to the S3 Bills Bucket.
+- WHY IT'S A LAMBDA: PDF generation is incredibly CPU intensive and requires loading heavy font/rendering libraries. Running PDF generation on the primary EC2 instances would starve the API of memory and CPU cycles. Offloading this to Lambda ensures the main API remains highly responsive, no matter how many bills are being generated.
