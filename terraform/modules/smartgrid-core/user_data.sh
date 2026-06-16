@@ -27,7 +27,7 @@ npm install -g pm2
 # 4. Clone repository
 echo "Cloning codebase..."
 rm -rf /home/ubuntu/electricity-grid
-git clone -b feature/ai-assistant-bill-download https://github.com/Likhi161/electricity-grid.git /home/ubuntu/electricity-grid
+git clone -b feature/ai-assistant-bedrock-nova https://github.com/Likhi161/electricity-grid.git /home/ubuntu/electricity-grid
 chown -R ubuntu:ubuntu /home/ubuntu/electricity-grid
 
 # 5. Wait for RDS MySQL Database (up to 5 minutes)
