@@ -7,7 +7,7 @@ const s3 = new AWS.S3({
   region: process.env.AWS_REGION || 'us-east-1'
 });
 
-const BUCKET_NAME = process.env.BILLS_BUCKET_NAME || 'smartgrid-bills-storage';
+const BUCKET_NAME = process.env.S3_BUCKET_NAME || process.env.BILLS_BUCKET_NAME || 'smartgrid-bills-storage';
 
 exports.handler = async (event) => {
   console.log("Event:", JSON.stringify(event));

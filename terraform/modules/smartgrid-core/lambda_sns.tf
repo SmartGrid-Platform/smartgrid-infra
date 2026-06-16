@@ -63,6 +63,11 @@ module "lambda_bill_generator" {
       actions   = ["s3:PutObject"]
       resources = ["${aws_s3_bucket.bills_bucket.arn}/*"]
     }
+    kms = {
+      effect    = "Allow"
+      actions   = ["kms:GenerateDataKey", "kms:Decrypt"]
+      resources = [aws_kms_key.s3_key.arn]
+    }
   }
 }
 
