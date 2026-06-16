@@ -114,7 +114,7 @@ echo "Installing dependencies..."
 cd "$PROJECT_ROOT/shared/database"
 npm install --unsafe-perm
 
-for SERVICE in "${SERVICES[@]}"; do
+for SERVICE in "$${SERVICES[@]}"; do
   echo "Installing dependencies for $SERVICE..."
   cd "$PROJECT_ROOT/services/$SERVICE"
   npm install --unsafe-perm
@@ -131,7 +131,7 @@ ADMIN_NAME="Admin" ADMIN_EMAIL="admin@smartgrid.com" ADMIN_PASSWORD="password123
 
 # 9. Start Microservices in PM2
 echo "Starting microservices..."
-for SERVICE in "${SERVICES[@]}"; do
+for SERVICE in "$${SERVICES[@]}"; do
   echo "Launching $SERVICE..."
   cd "$PROJECT_ROOT/services/$SERVICE"
   # Start under pm2 for ubuntu user
@@ -140,7 +140,7 @@ done
 
 # Save PM2 state for automatic startup on reboot
 sudo -u ubuntu pm2 save
-env PATH=$PATH:/usr/bin pm2 startup systemd -u ubuntu --hp /home/ubuntu | bash
+env PATH=$$PATH:/usr/bin pm2 startup systemd -u ubuntu --hp /home/ubuntu | bash
 
 echo "========================================="
 echo "      Bootstrap Process Completed        "
