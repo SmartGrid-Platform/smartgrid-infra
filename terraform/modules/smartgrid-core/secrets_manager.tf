@@ -30,6 +30,8 @@ resource "aws_secretsmanager_secret_version" "smartgrid_secret_val" {
     LAMBDA_TARIFF_ENGINE   = module.lambda_tariff_engine.lambda_function_name
     SNS_LOW_BALANCE_ARN    = module.sns_low_balance.topic_arn
     SNS_DISCONNECTION_ARN  = module.sns_disconnection.topic_arn
+    BEDROCK_MODEL_PRIMARY  = "us.amazon.nova-pro-v1:0"
+    BEDROCK_MODEL_FALLBACK = "us.amazon.nova-lite-v1:0"
   })
 }
 

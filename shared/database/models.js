@@ -229,6 +229,10 @@ const Bill = sequelize.define('Bill', {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: false
   },
+  total_amount: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true
+  },
   status: {
     type: DataTypes.ENUM('PAID', 'UNPAID'),
     allowNull: false,
@@ -236,6 +240,14 @@ const Bill = sequelize.define('Bill', {
   },
   pdf_path: {
     type: DataTypes.STRING,
+    allowNull: true
+  },
+  s3_key: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  generated_at: {
+    type: DataTypes.DATE,
     allowNull: true
   }
 }, {

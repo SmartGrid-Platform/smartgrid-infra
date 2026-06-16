@@ -16,7 +16,7 @@ const ConsumerBillDetails = () => {
   useEffect(() => {
     const fetchBill = async () => {
       try {
-        const res = await billingApi.get(`/bills/${id}`);
+        const res = await billingApi.get(`/consumer/bills/${id}`);
         setBill(res.data);
       } catch (err) {
         console.error(err);
@@ -30,7 +30,7 @@ const ConsumerBillDetails = () => {
 
   const handleDownload = async () => {
     try {
-      const res = await billingApi.get(`/bills/${id}/download`);
+      const res = await billingApi.get(`/consumer/bills/${id}/download`);
       if (res.data.downloadUrl) {
         window.open(res.data.downloadUrl, '_blank');
       }

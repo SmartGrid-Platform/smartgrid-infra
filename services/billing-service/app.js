@@ -313,8 +313,11 @@ app.post('/api/bills/generate', authenticate, authorize(['STAFF', 'SUPERVISOR', 
       billing_month: billingMonth,
       units_used: totalUnits,
       amount,
+      total_amount: amount,
       status: 'PAID', // It is prepaid, so it is registered as paid by default
-      pdf_path: fileName
+      pdf_path: fileName,
+      s3_key: fileName,
+      generated_at: new Date()
     }, { transaction });
 
     // 6. Create notification alert for consumer user
@@ -394,6 +397,78 @@ app.get('/api/bills/:id', authenticate, async (req, res) => {
     
     return res.status(200).json(bill);
   } catch (error) {
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// NEW ENDPOINTS AS REQUESTED:
+// GET /api/consumer/bills (Returns bill history for logged in consumer)
+app.get('/api/consumer/bills', authenticate, async (req, res) => {
+  try {
+    if (req.user.role !== 'CONSUMER') {
+      return res.status(403).json({ error: 'Only consumers can access this endpoint' });
+    }
+    const consumer = await Consumer.findOne({ where: { user_id: req.user.id } });
+    if (!consumer) return res.status(404).json({ error: 'Consumer profile not found' });
+
+    const bills = await Bill.findAll({
+      where: { consumer_id: consumer.id },
+      order: [['billing_month', 'DESC']]
+    });
+    return res.status(200).json(bills);
+  } catch (error) {
+    console.error('Fetch Consumer Bills Error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/consumer/bills/:id (Returns bill details for logged in consumer)
+app.get('/api/consumer/bills/:id', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (req.user.role !== 'CONSUMER') {
+      return res.status(403).json({ error: 'Only consumers can access this endpoint' });
+    }
+    const consumer = await Consumer.findOne({ where: { user_id: req.user.id } });
+    if (!consumer) return res.status(404).json({ error: 'Consumer profile not found' });
+
+    const bill = await Bill.findOne({
+      where: { id, consumer_id: consumer.id },
+      include: [{ model: Consumer, as: 'consumer' }]
+    });
+    if (!bill) return res.status(404).json({ error: 'Bill not found' });
+
+    return res.status(200).json(bill);
+  } catch (error) {
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/consumer/bills/:id/download (Generates secure pre-signed S3 URL)
+app.get('/api/consumer/bills/:id/download', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (req.user.role !== 'CONSUMER') {
+      return res.status(403).json({ error: 'Only consumers can access this endpoint' });
+    }
+    const consumer = await Consumer.findOne({ where: { user_id: req.user.id } });
+    if (!consumer) return res.status(404).json({ error: 'Consumer profile not found' });
+
+    const bill = await Bill.findOne({
+      where: { id, consumer_id: consumer.id }
+    });
+    if (!bill) return res.status(404).json({ error: 'Bill not found' });
+
+    // Generate Pre-Signed URL using the S3 helper
+    const { getSignedDownloadUrl } = require('../../shared/database/s3-helper');
+    // Using s3_key if available, fallback to pdf_path
+    const fileKey = bill.s3_key || bill.pdf_path;
+    if (!fileKey) return res.status(404).json({ error: 'Bill PDF not found in records' });
+
+    const downloadUrl = await getSignedDownloadUrl(fileKey);
+    return res.status(200).json({ downloadUrl });
+  } catch (error) {
+    console.error('Download Bill Error:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

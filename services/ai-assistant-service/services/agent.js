@@ -1,50 +1,147 @@
-const { ChatOpenAI } = require('@langchain/openai');
-const { ChatBedrockConverse } = require('@langchain/aws');
-const { createReactAgent } = require('@langchain/langgraph/prebuilt');
-const { getAllTools } = require('./tools');
-const { SystemMessage } = require('@langchain/core/messages');
+const { StateGraph, END } = require('@langchain/langgraph');
+const bedrockProvider = require('./bedrockProvider');
+const { 
+  getConsumerProfileTool, 
+  getConsumerBillsTool, 
+  getConsumerRechargesTool, 
+  getConsumerMetersAndUsageTool, 
+  getActiveTariffTool 
+} = require('./tools');
 
-const createAgent = async () => {
-  const tools = getAllTools();
+const INTENTS = [
+  'explain_bill', 
+  'check_balance', 
+  'recharge_recommendation', 
+  'usage_analysis', 
+  'energy_saving', 
+  'bill_history', 
+  'tariff_question',
+  'irrelevant'
+];
+
+// Helper to define graph state
+const agentState = {
+  messages: {
+    value: (x, y) => x.concat(y),
+    default: () => [],
+  },
+  intent: {
+    value: (x, y) => y,
+    default: () => null,
+  },
+  context: {
+    value: (x, y) => ({ ...x, ...y }),
+    default: () => ({}),
+  },
+  consumerId: {
+    value: (x, y) => y,
+    default: () => null,
+  },
+  authHeader: {
+    value: (x, y) => y,
+    default: () => null,
+  }
+};
+
+const detectIntent = async (state) => {
+  const lastMessage = state.messages[state.messages.length - 1].content;
   
-  let llm;
-  const provider = process.env.LLM_PROVIDER || 'openai';
+  const systemPrompt = `You are an intent classification engine for the SmartGrid AI Assistant.
+The user message MUST be classified into one of the following exact string intents:
+${INTENTS.join(', ')}
 
-  if (provider === 'bedrock') {
-    llm = new ChatBedrockConverse({
-      model: 'anthropic.claude-3-haiku-20240307-v1:0', // or your preferred bedrock model
-      region: process.env.AWS_REGION || 'us-east-1',
-      // credentials will be picked up from AWS SDK standard environment variables
-    });
-  } else {
-    // Default to OpenAI
-    llm = new ChatOpenAI({
-      modelName: 'gpt-4o-mini',
-      temperature: 0,
-      openAIApiKey: process.env.OPENAI_API_KEY
-    });
+ONLY return the exact string of the intent. DO NOT return any other text or punctuation.
+
+If the user asks about ANYTHING NOT RELATED to electricity usage, billing, balances, recharge, or energy insights (e.g. "Who is the Prime Minister?"), you MUST return "irrelevant".`;
+
+  const intentResponse = await bedrockProvider.generateResponse(systemPrompt, lastMessage);
+  const detectedIntent = intentResponse.trim().toLowerCase();
+  
+  // Validate intent
+  const finalIntent = INTENTS.includes(detectedIntent) ? detectedIntent : 'irrelevant';
+  
+  return { intent: finalIntent };
+};
+
+const gatherContext = async (state) => {
+  const { intent, consumerId, authHeader } = state;
+  let gatheredContext = {};
+  
+  const config = { configurable: { consumerId, authHeader } };
+
+  try {
+    if (['check_balance', 'recharge_recommendation', 'explain_bill', 'usage_analysis'].includes(intent)) {
+      gatheredContext.profile = JSON.parse(await getConsumerProfileTool.func("", null, config));
+    }
+    if (['bill_history', 'explain_bill', 'recharge_recommendation'].includes(intent)) {
+      gatheredContext.bills = JSON.parse(await getConsumerBillsTool.func("", null, config));
+    }
+    if (['usage_analysis', 'energy_saving', 'explain_bill'].includes(intent)) {
+      gatheredContext.usage = JSON.parse(await getConsumerMetersAndUsageTool.func("", null, config));
+    }
+    if (['tariff_question', 'recharge_recommendation'].includes(intent)) {
+      gatheredContext.tariff = JSON.parse(await getActiveTariffTool.func("", null, config));
+    }
+    if (['recharge_recommendation'].includes(intent)) {
+      gatheredContext.recharges = JSON.parse(await getConsumerRechargesTool.func("", null, config));
+    }
+  } catch (error) {
+    console.error("Context gathering error:", error);
   }
 
-  const systemMessage = new SystemMessage(`
-You are the SmartGrid AI Assistant, a helpful electricity bill and prepaid metering guide for consumers.
-You can answer questions about their account, explain bills, suggest energy saving tips, and recommend recharge amounts.
+  return { context: gatheredContext };
+};
 
-Guidelines:
-1. ALWAYS use the provided tools to fetch actual consumer data before answering.
-2. NEVER guess or hallucinate account balances, usage numbers, or recharge histories.
-3. If the user asks for a recharge recommendation, fetch their current balance, calculate their average daily consumption cost from historical bills, and suggest how much they need for the next 15/30 days.
-4. Keep your responses concise, friendly, and formatted nicely.
-5. If the user asks about a specific bill, fetch their bills, find the matching month, compare it to the previous month, and note any differences in consumption.
-6. Provide specific, actionable energy-saving recommendations based on any unusual usage spikes found in their readings.
-  `);
+const assemblePromptAndRespond = async (state) => {
+  const { intent, context, messages } = state;
+  const lastMessage = messages[messages.length - 1].content;
 
-  const agent = createReactAgent({
-    llm,
-    tools,
-    stateModifier: systemMessage
-  });
+  if (intent === 'irrelevant') {
+    return {
+      messages: [{ role: 'assistant', content: "I am the SmartGrid AI Assistant and can only help with electricity usage, billing, balances, and energy insights." }]
+    };
+  }
 
-  return agent;
+  let systemPrompt = `You are the SmartGrid AI Assistant. Use the provided JSON Context to answer the user's question. 
+Keep your response concise, professional, and friendly. Do not hallucinate data that is not in the context.
+
+Context:
+${JSON.stringify(context, null, 2)}
+
+`;
+
+  if (intent === 'recharge_recommendation') {
+    systemPrompt += `\nCalculate their average daily consumption cost from historical bills, and suggest how much they need for the next 15/30 days. Formula: (Last 30 Day Cost / 30). Estimated Remaining Days = Current Balance / Average Daily Cost.`;
+  }
+  if (intent === 'energy_saving') {
+    systemPrompt += `\nIdentify highest consumption hours/days from the usage data. Suggest actionable recommendations (e.g., Reduce AC usage). Include Estimated Savings based on their tariff rate.`;
+  }
+
+  const responseText = await bedrockProvider.generateResponse(systemPrompt, lastMessage);
+
+  return {
+    messages: [{ role: 'assistant', content: responseText }]
+  };
+};
+
+const buildWorkflow = () => {
+  const workflow = new StateGraph({ channels: agentState });
+
+  workflow.addNode('detectIntent', detectIntent);
+  workflow.addNode('gatherContext', gatherContext);
+  workflow.addNode('respond', assemblePromptAndRespond);
+
+  workflow.addEdge('detectIntent', 'gatherContext');
+  workflow.addEdge('gatherContext', 'respond');
+  workflow.addEdge('respond', END);
+
+  workflow.setEntryPoint('detectIntent');
+
+  return workflow.compile();
+};
+
+const createAgent = () => {
+  return buildWorkflow();
 };
 
 module.exports = { createAgent };

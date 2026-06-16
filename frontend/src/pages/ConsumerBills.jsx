@@ -14,14 +14,8 @@ const ConsumerBills = () => {
   useEffect(() => {
     const fetchBills = async () => {
       try {
-        const profRes = await consumerApi.get('/consumers/me');
-        const cId = profRes.data?.id;
-        setConsumerId(cId);
-        
-        if (cId) {
-          const billsRes = await billingApi.get(`/bills/consumer/${cId}`);
-          setBills(billsRes.data || []);
-        }
+        const billsRes = await billingApi.get('/consumer/bills');
+        setBills(billsRes.data || []);
       } catch (error) {
         console.error('Error fetching bills:', error);
       } finally {
@@ -33,7 +27,7 @@ const ConsumerBills = () => {
 
   const handleDownload = async (billId) => {
     try {
-      const res = await billingApi.get(`/bills/${billId}/download`);
+      const res = await billingApi.get(`/consumer/bills/${billId}/download`);
       if (res.data.downloadUrl) {
         window.open(res.data.downloadUrl, '_blank');
       } else {

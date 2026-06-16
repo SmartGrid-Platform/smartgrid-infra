@@ -35,12 +35,12 @@ router.post('/chat', authenticate, async (req, res) => {
     
     // We pass consumerId and authHeader via state/config if needed, but easier through configurable
     const result = await agent.invoke({
-      messages: [{ role: 'user', content: message }]
+      messages: [{ role: 'user', content: message }],
+      consumerId: config.consumerId,
+      authHeader: config.authHeader
     }, {
       configurable: {
-        thread_id: sId,
-        consumerId: config.consumerId,
-        authHeader: config.authHeader
+        thread_id: sId
       }
     });
 
@@ -71,12 +71,12 @@ router.post('/explain-bill', authenticate, async (req, res) => {
     const message = `Please explain my bill with ID ${billId}. Give a breakdown, compare it to past usage, and provide energy-saving recommendations based on my historical usage patterns.`;
     
     const result = await agent.invoke({
-      messages: [{ role: 'user', content: message }]
+      messages: [{ role: 'user', content: message }],
+      consumerId,
+      authHeader
     }, {
       configurable: {
-        thread_id: `explain_${billId}_${Date.now()}`,
-        consumerId,
-        authHeader
+        thread_id: `explain_${billId}_${Date.now()}`
       }
     });
 
