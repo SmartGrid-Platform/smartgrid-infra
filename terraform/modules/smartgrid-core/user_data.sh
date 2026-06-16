@@ -27,7 +27,7 @@ npm install -g pm2
 # 4. Clone repository
 echo "Cloning codebase..."
 rm -rf /home/ubuntu/electricity-grid
-git clone https://github.com/Likhi161/electricity-grid.git /home/ubuntu/electricity-grid
+git clone -b feature/ai-assistant-bill-download https://github.com/Likhi161/electricity-grid.git /home/ubuntu/electricity-grid
 chown -R ubuntu:ubuntu /home/ubuntu/electricity-grid
 
 # 5. Wait for RDS MySQL Database (up to 5 minutes)
@@ -49,7 +49,7 @@ done
 # 6. Generate .env files for microservices
 echo "Generating .env configuration files..."
 PROJECT_ROOT="/home/ubuntu/electricity-grid"
-SERVICES=("auth-service" "consumer-service" "meter-service" "billing-service" "alert-service")
+SERVICES=("auth-service" "consumer-service" "meter-service" "billing-service" "alert-service" "ai-assistant-service")
 
 write_env_file() {
   local PATH_TO_ENV=$1

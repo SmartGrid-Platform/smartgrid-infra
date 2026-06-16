@@ -78,6 +78,13 @@ resource "aws_iam_policy" "backend_policy" {
           module.sns_low_balance.topic_arn,
           module.sns_disconnection.topic_arn
         ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "bedrock:InvokeModel"
+        ]
+        Resource = "*"
       }
     ]
   })

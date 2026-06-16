@@ -129,6 +129,23 @@ resource "aws_lb_target_group" "tg_alert" {
   }
 }
 
+resource "aws_lb_target_group" "tg_assistant" {
+  name     = "tg-assistant"
+  port     = 4004
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.smartgrid_vpc.id
+
+  health_check {
+    path                = "/api/assistant/health"
+    protocol            = "HTTP"
+    matcher             = "200"
+    interval            = 15
+    timeout             = 3
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+  }
+}
+
 #################################################
 # Listener & Rules
 # (Receives forwarded API requests from CloudFront)
@@ -232,6 +249,24 @@ resource "aws_lb_listener_rule" "route_alert" {
       values = [
         "/api/alerts*",
         "/api/inspections*"
+      ]
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "route_assistant" {
+  listener_arn = aws_lb_listener.http_listener.arn
+  priority     = 60
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.tg_assistant.arn
+  }
+
+  condition {
+    path_pattern {
+      values = [
+        "/api/assistant*"
       ]
     }
   }

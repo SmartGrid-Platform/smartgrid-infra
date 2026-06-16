@@ -67,7 +67,8 @@ resource "aws_autoscaling_group" "backend_asg" {
     aws_lb_target_group.tg_consumer.arn,
     aws_lb_target_group.tg_meter.arn,
     aws_lb_target_group.tg_billing.arn,
-    aws_lb_target_group.tg_alert.arn
+    aws_lb_target_group.tg_alert.arn,
+    aws_lb_target_group.tg_assistant.arn
   ]
 
   launch_template {

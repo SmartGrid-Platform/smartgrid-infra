@@ -51,6 +51,19 @@ module "lambda_bill_generator" {
 
   source_path = "${path.root}/../lambdas/bill_generator"
   publish     = true
+
+  environment_variables = {
+    S3_BUCKET_NAME = aws_s3_bucket.bills_bucket.id
+  }
+
+  attach_policy_statements = true
+  policy_statements = {
+    s3 = {
+      effect    = "Allow"
+      actions   = ["s3:PutObject"]
+      resources = ["${aws_s3_bucket.bills_bucket.arn}/*"]
+    }
+  }
 }
 
 module "lambda_tariff_engine" {
