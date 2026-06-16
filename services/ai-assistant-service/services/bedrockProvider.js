@@ -3,10 +3,17 @@ const { BedrockRuntimeClient, ConverseCommand } = require('@aws-sdk/client-bedro
 class BedrockProvider {
   constructor() {
     this.client = new BedrockRuntimeClient({
-      region: process.env.AWS_REGION || 'us-east-1'
+      region: process.env.BEDROCK_REGION || 'us-east-1'
     });
-    this.primaryModel = process.env.BEDROCK_MODEL_PRIMARY || 'us.amazon.nova-pro-v1:0';
-    this.fallbackModel = process.env.BEDROCK_MODEL_FALLBACK || 'us.amazon.nova-lite-v1:0';
+    const defaultPrimary = 'amazon.nova-pro-v1:0';
+    const defaultFallback = 'amazon.nova-lite-v1:0';
+    
+    // Normalize us.amazon prefix to amazon for standard model IDs
+    let pModel = process.env.BEDROCK_MODEL_PRIMARY || defaultPrimary;
+    let fModel = process.env.BEDROCK_MODEL_FALLBACK || defaultFallback;
+    
+    this.primaryModel = pModel.includes('nova') ? pModel.replace('us.amazon.', 'amazon.') : pModel;
+    this.fallbackModel = fModel.includes('nova') ? fModel.replace('us.amazon.', 'amazon.') : fModel;
   }
 
   async generateResponse(systemPrompt, userMessage) {

@@ -108,4 +108,11 @@ const getAllTools = () => [
   getActiveTariffTool
 ];
 
-module.exports = { getAllTools };
+module.exports = { 
+  getAllTools,
+  getConsumerProfileTool,
+  getConsumerBillsTool,
+  getConsumerRechargesTool,
+  getConsumerMetersAndUsageTool,
+  getActiveTariffTool
+};
