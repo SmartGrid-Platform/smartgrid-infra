@@ -14,6 +14,7 @@ export const CONSUMER_URL = isLocalhost ? `http://localhost:3002/api` : `${proto
 export const METER_URL = isLocalhost ? `http://localhost:3003/api` : `${protocol}//${hostname}${port}/api`;
 export const BILLING_URL = isLocalhost ? `http://localhost:3004/api` : `${protocol}//${hostname}${port}/api`;
 export const ALERT_URL = isLocalhost ? `http://localhost:3005/api` : `${protocol}//${hostname}${port}/api`;
+export const ASSISTANT_URL = isLocalhost ? `http://localhost:4004/api` : `${protocol}//${hostname}${port}/api`;
 
 const createClient = (baseURL) => {
   const instance = axios.create({
@@ -58,3 +59,4 @@ export const consumerApi = createClient(CONSUMER_URL);
 export const meterApi = createClient(METER_URL);
 export const billingApi = createClient(BILLING_URL);
 export const alertApi = createClient(ALERT_URL);
+export const assistantApi = createClient(ASSISTANT_URL);

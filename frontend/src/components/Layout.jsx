@@ -130,6 +130,20 @@ const Layout = ({ children }) => {
                 </Typography>
               )}
 
+              {user && user.role === 'CONSUMER' && (
+                <Box sx={{ display: 'flex', gap: 1, ml: 2, mr: 2 }}>
+                  <Button size="small" sx={{ color: '#fff' }} onClick={() => navigate('/consumer')}>
+                    Dashboard
+                  </Button>
+                  <Button size="small" sx={{ color: '#fff' }} onClick={() => navigate('/consumer/bills')}>
+                    My Bills
+                  </Button>
+                  <Button size="small" sx={{ color: '#fff' }} onClick={() => navigate('/consumer/assistant')}>
+                    AI Assistant
+                  </Button>
+                </Box>
+              )}
+
               {/* Notifications Icon */}
               <IconButton color="inherit" onClick={handleNotificationsOpen}>
                 <Badge badgeContent={Array.isArray(notifications) ? notifications.length : 0} color="secondary">

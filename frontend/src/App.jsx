@@ -11,6 +11,9 @@ import ConsumerDashboard from './pages/ConsumerDashboard';
 import StaffDashboard from './pages/StaffDashboard';
 import SupervisorDashboard from './pages/SupervisorDashboard';
 import AdminDashboard from './pages/AdminDashboard';
+import ConsumerAssistant from './pages/ConsumerAssistant';
+import ConsumerBills from './pages/ConsumerBills';
+import ConsumerBillDetails from './pages/ConsumerBillDetails';
 import ErrorBoundary from './components/ErrorBoundary';
 
 // Protected Route Component
@@ -68,6 +71,36 @@ function AppRoutes() {
               <ProtectedRoute allowedRoles={['CONSUMER']}>
                 <ErrorBoundary>
                   <ConsumerDashboard />
+                </ErrorBoundary>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/consumer/assistant"
+            element={
+              <ProtectedRoute allowedRoles={['CONSUMER']}>
+                <ErrorBoundary>
+                  <ConsumerAssistant />
+                </ErrorBoundary>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/consumer/bills"
+            element={
+              <ProtectedRoute allowedRoles={['CONSUMER']}>
+                <ErrorBoundary>
+                  <ConsumerBills />
+                </ErrorBoundary>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/consumer/bills/:id"
+            element={
+              <ProtectedRoute allowedRoles={['CONSUMER']}>
+                <ErrorBoundary>
+                  <ConsumerBillDetails />
                 </ErrorBoundary>
               </ProtectedRoute>
             }

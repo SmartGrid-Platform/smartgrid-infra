@@ -1,4 +1,5 @@
 const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const fs = require('fs');
 const path = require('path');
 
@@ -100,4 +101,25 @@ async function deleteBill(fileName) {
   }
 }
 
-module.exports = { uploadBill, downloadBill, deleteBill };
+async function getSignedDownloadUrl(fileName) {
+  if (s3Client) {
+    try {
+      const command = new GetObjectCommand({
+        Bucket: bucketName,
+        Key: fileName
+      });
+      // URL expires in 15 minutes (900 seconds)
+      const url = await getSignedUrl(s3Client, command, { expiresIn: 900 });
+      return url;
+    } catch (err) {
+      console.error(`[S3 Helper] S3 presign failed for ${fileName} (${err.message}).`);
+    }
+  }
+
+  // Fallback for local development
+  // In a real local setup we might return a local static file URL. 
+  // Here we'll return a special local URL handled by the frontend or backend.
+  return `http://localhost:${process.env.PORT || 3004}/api/bills/local-download/${fileName}`;
+}
+
+module.exports = { uploadBill, downloadBill, deleteBill, getSignedDownloadUrl };
