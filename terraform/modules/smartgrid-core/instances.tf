@@ -33,12 +33,16 @@ resource "aws_launch_template" "backend_lt" {
   }
 
   user_data = base64encode(templatefile("${path.module}/user_data.sh", {
-    db_host     = aws_db_instance.database.address
-    db_name     = aws_db_instance.database.db_name
-    db_user     = aws_db_instance.database.username
-    db_password = aws_db_instance.database.password
-    aws_region  = var.aws_region
-    secret_name = aws_secretsmanager_secret.smartgrid_secret.name
+    db_host              = aws_db_instance.database.address
+    db_name              = aws_db_instance.database.db_name
+    db_user              = aws_db_instance.database.username
+    db_password          = aws_db_instance.database.password
+    aws_region           = var.aws_region
+    secret_name          = aws_secretsmanager_secret.smartgrid_secret.name
+    lambda_bill_generator = module.lambda_bill_generator.lambda_function_name
+    lambda_tariff_engine  = module.lambda_tariff_engine.lambda_function_name
+    lambda_unit_calculator = module.lambda_unit_calculator.lambda_function_name
+    s3_bucket_name        = aws_s3_bucket.bills_bucket.id
   }))
 
   lifecycle {

@@ -71,11 +71,40 @@ AWS_SECRET_NAME=${secret_name}
 EOF
 }
 
-# Write environment files
+# Write shared database env
 write_env_file "$PROJECT_ROOT/shared/database/.env"
-for SERVICE in "$${SERVICES[@]}"; do
-  write_env_file "$PROJECT_ROOT/services/$SERVICE/.env"
-done
+
+# Write per-service env files
+write_env_file "$PROJECT_ROOT/services/auth-service/.env"
+echo "PORT=3001" >> "$PROJECT_ROOT/services/auth-service/.env"
+
+write_env_file "$PROJECT_ROOT/services/consumer-service/.env"
+echo "PORT=3002" >> "$PROJECT_ROOT/services/consumer-service/.env"
+
+write_env_file "$PROJECT_ROOT/services/meter-service/.env"
+echo "PORT=3003" >> "$PROJECT_ROOT/services/meter-service/.env"
+
+write_env_file "$PROJECT_ROOT/services/billing-service/.env"
+echo "PORT=3004" >> "$PROJECT_ROOT/services/billing-service/.env"
+echo "LAMBDA_BILL_GENERATOR=${lambda_bill_generator}" >> "$PROJECT_ROOT/services/billing-service/.env"
+echo "LAMBDA_TARIFF_ENGINE=${lambda_tariff_engine}" >> "$PROJECT_ROOT/services/billing-service/.env"
+echo "LAMBDA_UNIT_CALCULATOR=${lambda_unit_calculator}" >> "$PROJECT_ROOT/services/billing-service/.env"
+echo "S3_BUCKET_NAME=${s3_bucket_name}" >> "$PROJECT_ROOT/services/billing-service/.env"
+
+write_env_file "$PROJECT_ROOT/services/alert-service/.env"
+echo "PORT=3005" >> "$PROJECT_ROOT/services/alert-service/.env"
+
+# AI Assistant specific env — includes Bedrock model IDs + internal service URLs
+write_env_file "$PROJECT_ROOT/services/ai-assistant-service/.env"
+cat >> "$PROJECT_ROOT/services/ai-assistant-service/.env" <<EOF
+PORT=4004
+BEDROCK_REGION=us-east-1
+BEDROCK_MODEL_PRIMARY=amazon.nova-pro-v1:0
+BEDROCK_MODEL_FALLBACK=amazon.nova-lite-v1:0
+CONSUMER_SERVICE_URL=http://localhost:3002
+BILLING_SERVICE_URL=http://localhost:3004
+METER_SERVICE_URL=http://localhost:3003
+EOF
 
 # Ensure files are owned by ubuntu
 chown -R ubuntu:ubuntu /home/ubuntu/electricity-grid
@@ -85,7 +114,7 @@ echo "Installing dependencies..."
 cd "$PROJECT_ROOT/shared/database"
 npm install --unsafe-perm
 
-for SERVICE in "$${SERVICES[@]}"; do
+for SERVICE in "${SERVICES[@]}"; do
   echo "Installing dependencies for $SERVICE..."
   cd "$PROJECT_ROOT/services/$SERVICE"
   npm install --unsafe-perm
@@ -102,7 +131,7 @@ ADMIN_NAME="Admin" ADMIN_EMAIL="admin@smartgrid.com" ADMIN_PASSWORD="password123
 
 # 9. Start Microservices in PM2
 echo "Starting microservices..."
-for SERVICE in "$${SERVICES[@]}"; do
+for SERVICE in "${SERVICES[@]}"; do
   echo "Launching $SERVICE..."
   cd "$PROJECT_ROOT/services/$SERVICE"
   # Start under pm2 for ubuntu user
