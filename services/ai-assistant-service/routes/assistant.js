@@ -9,32 +9,37 @@ const router = express.Router();
 const userSessions = new Map();
 
 router.post('/chat', authenticate, async (req, res) => {
-  console.log('[CHAT] Received chat request');
+  console.log('[CHAT] ==========================================');
+  console.log('[CHAT] Received incoming chat request');
   const { message, sessionId } = req.body;
   const consumerId = req.user?.consumerId || null; 
   const authHeader = req.headers.authorization;
   
   if (!message) {
-    console.warn('[CHAT] Missing message payload');
+    console.warn('[CHAT] [WARN] Missing message payload in request body');
     return res.status(400).json({ error: 'Message is required' });
   }
 
   if (!req.user || !req.user.id) {
-    console.error('[CHAT] Unauthorized access: missing user ID');
+    console.error('[CHAT] [ERROR] Unauthorized access: user payload is missing');
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  console.log(`[CHAT] Authenticated user: ${req.user.email} (Role: ${req.user.role}, Consumer ID: ${consumerId})`);
+  console.log(`[CHAT] [AUTH-CONTEXT] User Email: ${req.user.email} | User ID: ${req.user.id} | Role: ${req.user.role} | Consumer ID: ${consumerId}`);
+  console.log(`[CHAT] [PAYLOAD] Message: "${message}" | Session ID Input: "${sessionId || 'None'}"`);
 
   const sId = sessionId || `session_${req.user.id}_${Date.now()}`;
   
   if (!userSessions.has(sId)) {
+    console.log(`[CHAT] [SESSION] Creating new assistant session: ${sId}`);
     userSessions.set(sId, {
       configurable: { thread_id: sId },
       consumerId,
       authHeader,
       messages: []
     });
+  } else {
+    console.log(`[CHAT] [SESSION] Reusing existing assistant session: ${sId}`);
   }
   
   const config = userSessions.get(sId);
