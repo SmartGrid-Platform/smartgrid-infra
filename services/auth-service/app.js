@@ -138,18 +138,26 @@ app.post('/api/auth/login', async (req, res) => {
     return res.status(400).json({ error: 'Email and password are required' });
   }
 
+  console.log(`[AUTH-DEBUG] Login attempt - Email: ${email}`);
+
   try {
     const user = await User.findOne({
       where: { email },
       include: [{ model: Consumer, as: 'consumer' }]
     });
 
-    if (!user || user.status !== 'ACTIVE') {
+    if (!user) {
+      console.log(`[AUTH-DEBUG] Login failed - User not found for email: ${email}`);
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+    if (user.status !== 'ACTIVE') {
+      console.log(`[AUTH-DEBUG] Login failed - User status is ${user.status} for email: ${email}`);
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
+      console.log(`[AUTH-DEBUG] Login failed - Password mismatch for email: ${email}`);
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
