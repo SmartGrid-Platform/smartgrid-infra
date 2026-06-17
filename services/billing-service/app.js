@@ -55,22 +55,73 @@ app.get('/api/tariffs', authenticate, async (req, res) => {
 
 // POST create tariff (Admin only)
 app.post('/api/tariffs', authenticate, authorize(['ADMIN']), async (req, res) => {
-  const { tariff_name, rate_per_unit, effective_date } = req.body;
+  const { tariff_name, tariff_type, rate_per_unit, fixed_charge, status, description, effective_date } = req.body;
 
-  if (!tariff_name || !rate_per_unit || !effective_date) {
+  if (!tariff_name || rate_per_unit === undefined || !effective_date) {
     return res.status(400).json({ error: 'Tariff name, rate, and effective date are required' });
   }
 
   try {
     const tariff = await Tariff.create({
       tariff_name,
+      tariff_type: tariff_type || 'Residential',
       rate_per_unit,
+      fixed_charge: fixed_charge !== undefined ? fixed_charge : 0.00,
+      status: status || 'ACTIVE',
+      description,
       effective_date
     });
     return res.status(201).json({ message: 'Tariff created successfully', tariff });
   } catch (error) {
     console.error('Create Tariff Error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ error: `Internal server error: ${error.message}` });
+  }
+});
+
+// PUT update tariff (Admin only)
+app.put('/api/tariffs/:id', authenticate, authorize(['ADMIN']), async (req, res) => {
+  const { id } = req.params;
+  const { tariff_name, tariff_type, rate_per_unit, fixed_charge, status, description, effective_date } = req.body;
+
+  try {
+    const tariff = await Tariff.findByPk(id);
+    if (!tariff) {
+      return res.status(404).json({ error: 'Tariff plan not found' });
+    }
+
+    if (tariff_name !== undefined) tariff.tariff_name = tariff_name;
+    if (tariff_type !== undefined) tariff.tariff_type = tariff_type;
+    if (rate_per_unit !== undefined) tariff.rate_per_unit = rate_per_unit;
+    if (fixed_charge !== undefined) tariff.fixed_charge = fixed_charge;
+    if (status !== undefined) tariff.status = status;
+    if (description !== undefined) tariff.description = description;
+    if (effective_date !== undefined) tariff.effective_date = effective_date;
+
+    await tariff.save();
+    return res.status(200).json({ message: 'Tariff updated successfully', tariff });
+  } catch (error) {
+    console.error('Update Tariff Error:', error);
+    return res.status(500).json({ error: `Internal server error: ${error.message}` });
+  }
+});
+
+// DELETE tariff (Admin only)
+app.delete('/api/tariffs/:id', authenticate, authorize(['ADMIN']), async (req, res) => {
+  const { id } = req.params;
+  try {
+    const tariff = await Tariff.findByPk(id);
+    if (!tariff) {
+      return res.status(404).json({ error: 'Tariff plan not found' });
+    }
+
+    // Set associated meters to null tariff to prevent DB constraint errors
+    await Meter.update({ tariff_id: null }, { where: { tariff_id: id } });
+
+    await tariff.destroy();
+    return res.status(200).json({ message: 'Tariff plan deleted successfully' });
+  } catch (error) {
+    console.error('Delete Tariff Error:', error);
+    return res.status(500).json({ error: `Internal server error: ${error.message}` });
   }
 });
 
@@ -273,23 +324,40 @@ app.post('/api/bills/generate', authenticate, authorize(['STAFF', 'SUPERVISOR', 
 
     const totalUnits = readings.reduce((sum, r) => sum + parseFloat(r.units_consumed), 0);
 
-    // 3. Find active tariff and resolve rate via tariff_engine Lambda
-    const tariff = await Tariff.findOne({
-      order: [['effective_date', 'DESC'], ['id', 'DESC']],
-      transaction
-    });
+    // 3. Find active tariff for the consumer's meter
+    let tariff = null;
+    const meterWithTariff = meters.find(m => m.tariff_id);
+    if (meterWithTariff) {
+      tariff = await Tariff.findByPk(meterWithTariff.tariff_id, { transaction });
+    }
+
+    if (!tariff) {
+      // Fallback to active global tariff
+      tariff = await Tariff.findOne({
+        where: { status: 'ACTIVE' },
+        order: [['effective_date', 'DESC'], ['id', 'DESC']],
+        transaction
+      });
+    }
+
+    if (!tariff) {
+      await transaction.rollback();
+      return res.status(400).json({ error: 'No active tariff plan is assigned to this consumer or configured globally.' });
+    }
     
     const tariffResult = await invokeLambda(
       process.env.LAMBDA_TARIFF_ENGINE,
-      { tariff_name: tariff ? tariff.tariff_name : 'Standard' },
-      (payload) => ({ rate_per_unit: tariff ? parseFloat(tariff.rate_per_unit) : 0.15 })
+      { tariff_name: tariff.tariff_name },
+      (payload) => ({ rate_per_unit: parseFloat(tariff.rate_per_unit), fixed_charge: parseFloat(tariff.fixed_charge || 0) })
     );
-    const rate = tariffResult.rate_per_unit;
+    const rate = tariffResult.rate_per_unit !== undefined ? tariffResult.rate_per_unit : parseFloat(tariff.rate_per_unit);
+    const fixedCharge = tariffResult.fixed_charge !== undefined ? tariffResult.fixed_charge : parseFloat(tariff.fixed_charge || 0);
 
     // 4. Calculate total bill amount & generate PDF via bill_generator Lambda
     const lambdaPayload = {
       units: totalUnits,
       rate,
+      fixedCharge,
       consumerNumber: consumer.consumer_number,
       billingMonth,
       consumerName: consumer.user.name,
@@ -301,7 +369,10 @@ app.post('/api/bills/generate', authenticate, authorize(['STAFF', 'SUPERVISOR', 
     const billResult = await invokeLambda(
       process.env.LAMBDA_BILL_GENERATOR,
       lambdaPayload,
-      (payload) => ({ amount: parseFloat(payload.units) * parseFloat(payload.rate), s3_key: `fallback_bill_${Date.now()}.pdf` })
+      (payload) => ({ 
+        amount: parseFloat(payload.units) * parseFloat(payload.rate) + parseFloat(payload.fixedCharge || 0), 
+        s3_key: `fallback_bill_${Date.now()}.pdf` 
+      })
     );
     
     const amount = billResult.amount;
@@ -336,7 +407,7 @@ app.post('/api/bills/generate', authenticate, authorize(['STAFF', 'SUPERVISOR', 
   } catch (error) {
     await transaction.rollback();
     console.error('Bill Generation Error:', error);
-    return res.status(500).json({ error: 'Internal server error during bill generation' });
+    return res.status(500).json({ error: `Internal server error during bill generation: ${error.message}` });
   }
 });
 

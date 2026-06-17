@@ -236,18 +236,32 @@ app.post('/api/meters/:id/readings', authenticate, authorize(['STAFF', 'SUPERVIS
     );
     const calculatedUnits = unitResult.units_consumed;
 
-    // 1. Fetch active Tariff and resolve rate via tariff_engine Lambda
-    const tariff = await Tariff.findOne({
-      order: [['effective_date', 'DESC'], ['id', 'DESC']],
-      transaction
-    });
+    // 1. Fetch Tariff assigned to this meter
+    let tariff = null;
+    if (meter.tariff_id) {
+      tariff = await Tariff.findByPk(meter.tariff_id, { transaction });
+    }
+    
+    if (!tariff) {
+      // Fallback to active global tariff
+      tariff = await Tariff.findOne({
+        where: { status: 'ACTIVE' },
+        order: [['effective_date', 'DESC'], ['id', 'DESC']],
+        transaction
+      });
+    }
+
+    if (!tariff) {
+      await transaction.rollback();
+      return res.status(400).json({ error: 'No active tariff plan is assigned to this meter or configured globally.' });
+    }
     
     const tariffResult = await invokeLambda(
       process.env.LAMBDA_TARIFF_ENGINE,
-      { tariff_name: tariff ? tariff.tariff_name : 'Standard' },
-      (payload) => ({ rate_per_unit: tariff ? parseFloat(tariff.rate_per_unit) : 0.15 })
+      { tariff_name: tariff.tariff_name },
+      (payload) => ({ rate_per_unit: parseFloat(tariff.rate_per_unit) })
     );
-    const rate = tariffResult.rate_per_unit;
+    const rate = tariffResult.rate_per_unit !== undefined ? tariffResult.rate_per_unit : parseFloat(tariff.rate_per_unit);
 
     // 2. Calculate Cost via bill_generator Lambda
     const billResult = await invokeLambda(

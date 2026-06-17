@@ -1,0 +1,16 @@
+{
+    "Parameters":  {
+                       "commands":  [
+                                        "cd /home/ubuntu/electricity-grid",
+                                        "sudo -u ubuntu git pull origin feature/ai-assistant-bedrock-nova",
+                                        "cd services/ai-assistant-service",
+                                        "npm install --unsafe-perm",
+                                        "sudo -u ubuntu pm2 restart smartgrid-ai-assistant-service",
+                                        "sudo -u ubuntu pm2 logs smartgrid-ai-assistant-service --lines 20 --nostream"
+                                    ]
+                   },
+    "DocumentName":  "AWS-RunShellScript",
+    "InstanceIds":  [
+                        "i-0b5f6df775a5dab08"
+                    ]
+}

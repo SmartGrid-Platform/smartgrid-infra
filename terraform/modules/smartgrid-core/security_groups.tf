@@ -47,6 +47,15 @@ resource "aws_security_group" "backend_sg" {
     security_groups = [aws_security_group.alb_sg.id]
   }
 
+  # Allow AI Assistant traffic from public ALB SG
+  ingress {
+    from_port       = 4004
+    to_port         = 4004
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb_sg.id]
+  }
+
+
   egress {
     from_port   = 0
     to_port     = 0

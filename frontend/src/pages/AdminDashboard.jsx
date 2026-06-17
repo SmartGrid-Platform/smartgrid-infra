@@ -55,12 +55,14 @@ const AdminDashboard = () => {
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, type: '', id: null, message: '' });
   const [openRegisterUser, setOpenRegisterUser] = useState(false);
   const [openCreateTariff, setOpenCreateTariff] = useState(false);
+  const [openEditTariff, setOpenEditTariff] = useState(false);
   const [openEditUser, setOpenEditUser] = useState(false);
   const [openProvisionMeter, setOpenProvisionMeter] = useState(false);
 
   // Form Inputs
   const [newUser, setNewUser] = useState({ name: '', email: '', password: '', role: 'STAFF' });
-  const [newTariff, setNewTariff] = useState({ tariff_name: '', rate_per_unit: '', date: '' });
+  const [newTariff, setNewTariff] = useState({ tariff_name: '', tariff_type: 'Residential', rate_per_unit: '', fixed_charge: '0.00', status: 'ACTIVE', description: '', date: '' });
+  const [editTariffData, setEditTariffData] = useState({ id: '', tariff_name: '', tariff_type: 'Residential', rate_per_unit: '', fixed_charge: '0.00', status: 'ACTIVE', description: '', date: '' });
   const [editUserData, setEditUserData] = useState({ id: '', name: '', email: '', password: '', status: 'ACTIVE' });
   const [newMeterNumber, setNewMeterNumber] = useState('');
 
@@ -155,19 +157,23 @@ const AdminDashboard = () => {
 
   // Configure Tariff
   const handleCreateTariff = async () => {
-    if (!newTariff.tariff_name || !newTariff.rate_per_unit || !newTariff.date) {
-      setError('Please fill in all fields.');
+    if (!newTariff.tariff_name || newTariff.rate_per_unit === undefined || !newTariff.date) {
+      setError('Please fill in all required fields (Name, Rate, Effective Date).');
       return;
     }
     setError('');
     try {
       await billingApi.post('/tariffs', {
         tariff_name: newTariff.tariff_name,
+        tariff_type: newTariff.tariff_type,
         rate_per_unit: parseFloat(newTariff.rate_per_unit),
+        fixed_charge: parseFloat(newTariff.fixed_charge || 0),
+        status: newTariff.status,
+        description: newTariff.description,
         effective_date: newTariff.date
       });
       setSuccess('Tariff schema created successfully!');
-      setNewTariff({ tariff_name: '', rate_per_unit: '', date: '' });
+      setNewTariff({ tariff_name: '', tariff_type: 'Residential', rate_per_unit: '', fixed_charge: '0.00', status: 'ACTIVE', description: '', date: '' });
       fetchData();
       setTimeout(() => {
         setOpenCreateTariff(false);
@@ -175,6 +181,61 @@ const AdminDashboard = () => {
       }, 1500);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to configure tariff.');
+    }
+  };
+
+  const handleOpenEditTariff = (t) => {
+    setEditTariffData({
+      id: t.id,
+      tariff_name: t.tariff_name,
+      tariff_type: t.tariff_type || 'Residential',
+      rate_per_unit: t.rate_per_unit,
+      fixed_charge: t.fixed_charge || 0,
+      status: t.status || 'ACTIVE',
+      description: t.description || '',
+      date: t.effective_date
+    });
+    setOpenEditTariff(true);
+  };
+
+  const handleEditTariff = async () => {
+    if (!editTariffData.tariff_name || editTariffData.rate_per_unit === undefined || !editTariffData.date) {
+      setError('Name, rate, and effective date are required.');
+      return;
+    }
+    setError('');
+    try {
+      await billingApi.put(`/tariffs/${editTariffData.id}`, {
+        tariff_name: editTariffData.tariff_name,
+        tariff_type: editTariffData.tariff_type,
+        rate_per_unit: parseFloat(editTariffData.rate_per_unit),
+        fixed_charge: parseFloat(editTariffData.fixed_charge || 0),
+        status: editTariffData.status,
+        description: editTariffData.description,
+        effective_date: editTariffData.date
+      });
+      setSuccess('Tariff updated successfully!');
+      fetchData();
+      setTimeout(() => {
+        setOpenEditTariff(false);
+        setSuccess('');
+      }, 1500);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to update tariff.');
+    }
+  };
+
+  const handleDeleteTariff = async (id) => {
+    if (window.confirm('Are you sure you want to delete this tariff?')) {
+      setError('');
+      try {
+        await billingApi.delete(`/tariffs/${id}`);
+        setSuccess('Tariff deleted successfully!');
+        fetchData();
+        setTimeout(() => setSuccess(''), 2000);
+      } catch (err) {
+        setError(err.response?.data?.error || 'Failed to delete tariff.');
+      }
     }
   };
 
@@ -526,9 +587,14 @@ const AdminDashboard = () => {
                 <TableRow>
                   <TableCell>ID</TableCell>
                   <TableCell>Tariff Plan Name</TableCell>
+                  <TableCell>Type</TableCell>
                   <TableCell>Rate Per kWh (₹)</TableCell>
+                  <TableCell>Fixed Charge (₹)</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell>Description</TableCell>
                   <TableCell>Effective Date</TableCell>
                   <TableCell>Created At</TableCell>
+                  <TableCell align="right">Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -536,11 +602,30 @@ const AdminDashboard = () => {
                   <TableRow key={t.id}>
                     <TableCell>{t.id}</TableCell>
                     <TableCell><strong>{t.tariff_name}</strong></TableCell>
+                    <TableCell>{t.tariff_type || 'N/A'}</TableCell>
                     <TableCell sx={{ fontWeight: 'bold', color: '#00B7C2' }}>
                       ₹{parseFloat(t.rate_per_unit).toFixed(2)}
                     </TableCell>
+                    <TableCell>
+                      ₹{parseFloat(t.fixed_charge || 0).toFixed(2)}
+                    </TableCell>
+                    <TableCell>
+                      <Chip 
+                        label={t.status || 'ACTIVE'} 
+                        color={(t.status || 'ACTIVE') === 'ACTIVE' ? 'success' : 'error'} 
+                        size="small" 
+                        variant="outlined" 
+                      />
+                    </TableCell>
+                    <TableCell sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {t.description || 'No description'}
+                    </TableCell>
                     <TableCell>{t.effective_date}</TableCell>
                     <TableCell>{new Date(t.createdAt || t.created_at).toLocaleDateString()}</TableCell>
+                    <TableCell align="right">
+                      <Button size="small" color="primary" sx={{ mr: 1 }} onClick={() => handleOpenEditTariff(t)}>Edit</Button>
+                      <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => handleDeleteTariff(t.id)}>Delete</Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -604,8 +689,32 @@ const AdminDashboard = () => {
       <Dialog open={openCreateTariff} onClose={() => setOpenCreateTariff(false)}>
         <DialogTitle sx={{ backgroundColor: '#102733' }}>Configure Tariff Plan</DialogTitle>
         <DialogContent sx={{ backgroundColor: '#102733', pt: 2, display: 'flex', flexDirection: 'column', gap: 2, minWidth: 340 }}>
-          <TextField label="Tariff Name" placeholder="e.g. Standard Peak Tariff" value={newTariff.tariff_name} onChange={(e) => setNewTariff({ ...newTariff, tariff_name: e.target.value })} fullWidth />
-          <TextField label="Rate (₹ per kWh)" type="number" placeholder="e.g. 0.18" value={newTariff.rate_per_unit} onChange={(e) => setNewTariff({ ...newTariff, rate_per_unit: e.target.value })} fullWidth />
+          {error && <Alert severity="error">{error}</Alert>}
+          <TextField label="Tariff Name" placeholder="e.g. Residential Peak Plan" value={newTariff.tariff_name} onChange={(e) => setNewTariff({ ...newTariff, tariff_name: e.target.value })} fullWidth />
+          <TextField
+            select
+            label="Tariff Type"
+            value={newTariff.tariff_type}
+            onChange={(e) => setNewTariff({ ...newTariff, tariff_type: e.target.value })}
+            fullWidth
+          >
+            <MenuItem value="Residential">Residential</MenuItem>
+            <MenuItem value="Commercial">Commercial</MenuItem>
+            <MenuItem value="Industrial">Industrial</MenuItem>
+          </TextField>
+          <TextField label="Rate (₹ per kWh)" type="number" placeholder="e.g. 6.50" value={newTariff.rate_per_unit} onChange={(e) => setNewTariff({ ...newTariff, rate_per_unit: e.target.value })} fullWidth />
+          <TextField label="Fixed Charge (₹)" type="number" placeholder="e.g. 100.00" value={newTariff.fixed_charge} onChange={(e) => setNewTariff({ ...newTariff, fixed_charge: e.target.value })} fullWidth />
+          <TextField
+            select
+            label="Status"
+            value={newTariff.status}
+            onChange={(e) => setNewTariff({ ...newTariff, status: e.target.value })}
+            fullWidth
+          >
+            <MenuItem value="ACTIVE">ACTIVE</MenuItem>
+            <MenuItem value="INACTIVE">INACTIVE</MenuItem>
+          </TextField>
+          <TextField label="Description" placeholder="Description of the plan" multiline rows={2} value={newTariff.description} onChange={(e) => setNewTariff({ ...newTariff, description: e.target.value })} fullWidth />
           <TextField
             type="date"
             label="Effective Date"
@@ -618,6 +727,51 @@ const AdminDashboard = () => {
         <DialogActions sx={{ backgroundColor: '#102733' }}>
           <Button onClick={() => setOpenCreateTariff(false)} color="inherit">Cancel</Button>
           <Button onClick={handleCreateTariff} color="secondary" variant="contained">Configure</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 3.1 Edit Tariff Dialog */}
+      <Dialog open={openEditTariff} onClose={() => setOpenEditTariff(false)}>
+        <DialogTitle sx={{ backgroundColor: '#102733' }}>Edit Tariff Plan</DialogTitle>
+        <DialogContent sx={{ backgroundColor: '#102733', pt: 2, display: 'flex', flexDirection: 'column', gap: 2, minWidth: 340 }}>
+          {error && <Alert severity="error">{error}</Alert>}
+          <TextField label="Tariff Name" placeholder="e.g. Residential Peak Plan" value={editTariffData.tariff_name} onChange={(e) => setEditTariffData({ ...editTariffData, tariff_name: e.target.value })} fullWidth />
+          <TextField
+            select
+            label="Tariff Type"
+            value={editTariffData.tariff_type}
+            onChange={(e) => setEditTariffData({ ...editTariffData, tariff_type: e.target.value })}
+            fullWidth
+          >
+            <MenuItem value="Residential">Residential</MenuItem>
+            <MenuItem value="Commercial">Commercial</MenuItem>
+            <MenuItem value="Industrial">Industrial</MenuItem>
+          </TextField>
+          <TextField label="Rate (₹ per kWh)" type="number" placeholder="e.g. 6.50" value={editTariffData.rate_per_unit} onChange={(e) => setEditTariffData({ ...editTariffData, rate_per_unit: e.target.value })} fullWidth />
+          <TextField label="Fixed Charge (₹)" type="number" placeholder="e.g. 100.00" value={editTariffData.fixed_charge} onChange={(e) => setEditTariffData({ ...editTariffData, fixed_charge: e.target.value })} fullWidth />
+          <TextField
+            select
+            label="Status"
+            value={editTariffData.status}
+            onChange={(e) => setEditTariffData({ ...editTariffData, status: e.target.value })}
+            fullWidth
+          >
+            <MenuItem value="ACTIVE">ACTIVE</MenuItem>
+            <MenuItem value="INACTIVE">INACTIVE</MenuItem>
+          </TextField>
+          <TextField label="Description" placeholder="Description of the plan" multiline rows={2} value={editTariffData.description} onChange={(e) => setEditTariffData({ ...editTariffData, description: e.target.value })} fullWidth />
+          <TextField
+            type="date"
+            label="Effective Date"
+            InputLabelProps={{ shrink: true }}
+            value={editTariffData.date}
+            onChange={(e) => setEditTariffData({ ...editTariffData, date: e.target.value })}
+            fullWidth
+          />
+        </DialogContent>
+        <DialogActions sx={{ backgroundColor: '#102733' }}>
+          <Button onClick={() => setOpenEditTariff(false)} color="inherit">Cancel</Button>
+          <Button onClick={handleEditTariff} color="secondary" variant="contained">Save</Button>
         </DialogActions>
       </Dialog>
 

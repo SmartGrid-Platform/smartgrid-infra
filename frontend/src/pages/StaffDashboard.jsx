@@ -59,7 +59,7 @@ const StaffDashboard = () => {
 
   // Form Inputs
   const [newConsumer, setNewConsumer] = useState({ name: '', email: '', password: '', address: '', phone: '' });
-  const [assignMeterData, setAssignMeterData] = useState({ consumerId: '', meterId: '', date: '' });
+  const [assignMeterData, setAssignMeterData] = useState({ consumerId: '', meterId: '', tariffId: '', date: '' });
   const [newMeterNumber, setNewMeterNumber] = useState('');
   const [newReading, setNewReading] = useState({ meterId: '', units: '' });
   const [newBillData, setNewBillData] = useState({ consumerId: '', month: '' });
@@ -149,8 +149,8 @@ const StaffDashboard = () => {
 
   // 3. Assign Meter
   const handleAssignMeter = async () => {
-    if (!assignMeterData.consumerId || !assignMeterData.meterId) {
-      setError('Please select both consumer and meter.');
+    if (!assignMeterData.consumerId || !assignMeterData.meterId || !assignMeterData.tariffId) {
+      setError('Please select consumer, meter, and tariff plan.');
       return;
     }
     setError('');
@@ -158,10 +158,11 @@ const StaffDashboard = () => {
       await consumerApi.post('/consumers/assign-meter', {
         consumerId: parseInt(assignMeterData.consumerId, 10),
         meterId: parseInt(assignMeterData.meterId, 10),
+        tariffId: parseInt(assignMeterData.tariffId, 10),
         installationDate: assignMeterData.date || undefined
       });
       setSuccess('Meter assigned successfully!');
-      setAssignMeterData({ consumerId: '', meterId: '', date: '' });
+      setAssignMeterData({ consumerId: '', meterId: '', tariffId: '', date: '' });
       fetchData();
       setTimeout(() => {
         setOpenAssignMeter(false);
@@ -541,6 +542,19 @@ const StaffDashboard = () => {
             {(Array.isArray(meters) ? meters : []).filter(m => !m?.consumer_id).map((m) => (
               <MenuItem key={m?.id} value={m?.id}>
                 {m?.meter_number} (Unassigned)
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            select
+            label="Tariff Plan"
+            value={assignMeterData.tariffId}
+            onChange={(e) => setAssignMeterData({ ...assignMeterData, tariffId: e.target.value })}
+            fullWidth
+          >
+            {(Array.isArray(tariffs) ? tariffs : []).map((t) => (
+              <MenuItem key={t?.id} value={t?.id}>
+                {t?.tariff_name} (₹{parseFloat(t?.rate_per_unit).toFixed(2)}/unit, ₹{parseFloat(t?.fixed_charge || 0).toFixed(2)} fixed)
               </MenuItem>
             ))}
           </TextField>

@@ -67,6 +67,13 @@ const generateReply = async (intent, context, userMessage) => {
   let systemPrompt = `You are the SmartGrid AI Assistant. Use the provided JSON Context to answer the user's question.
 Keep your response concise, professional, and friendly. Do not hallucinate data that is not in the context.
 
+CRITICAL CURRENCY RULES:
+1. All monetary values, costs, charges, and balances MUST be displayed in Indian Rupees (₹).
+2. NEVER use US Dollars ($) or the USD symbol.
+3. The currency code is INR.
+4. When calculating estimations, use Indian Rupee (₹) and perform billing calculations based on the tariff rate in Rupees.
+5. Format numbers appropriately (e.g. ₹15,000 instead of $15,000).
+
 Context:
 ${JSON.stringify(context, null, 2)}
 

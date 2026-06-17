@@ -36,6 +36,9 @@ async function invokeLambda(functionName, payload, localFallbackFn) {
       );
       const resultPayload = Buffer.from(response.Payload).toString();
       const result = JSON.parse(resultPayload);
+      if (response.FunctionError) {
+        throw new Error(`Lambda execution failed: ${result.errorMessage || 'Unknown error'}`);
+      }
       console.log(`[AWS Helpers] Lambda ${functionName} success response:`, result);
       return result;
     } catch (err) {

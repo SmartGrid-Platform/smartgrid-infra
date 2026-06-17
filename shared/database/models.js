@@ -103,6 +103,14 @@ const Meter = sequelize.define('Meter', {
       key: 'id'
     }
   },
+  tariff_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'tariffs',
+      key: 'id'
+    }
+  },
   installation_date: {
     type: DataTypes.DATEONLY,
     allowNull: true
@@ -159,9 +167,27 @@ const Tariff = sequelize.define('Tariff', {
     type: DataTypes.STRING,
     allowNull: false
   },
+  tariff_type: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
   rate_per_unit: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: false
+  },
+  fixed_charge: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    defaultValue: 0.00
+  },
+  description: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  status: {
+    type: DataTypes.ENUM('ACTIVE', 'INACTIVE'),
+    allowNull: false,
+    defaultValue: 'ACTIVE'
   },
   effective_date: {
     type: DataTypes.DATEONLY,
@@ -351,6 +377,9 @@ Inspection.belongsTo(Consumer, { foreignKey: 'consumer_id', as: 'consumer' });
 
 User.hasMany(Inspection, { foreignKey: 'assigned_to', as: 'assignedInspections' });
 Inspection.belongsTo(User, { foreignKey: 'assigned_to', as: 'assignedUser' });
+
+Meter.belongsTo(Tariff, { foreignKey: 'tariff_id', as: 'tariff' });
+Tariff.hasMany(Meter, { foreignKey: 'tariff_id', as: 'meters' });
 
 module.exports = {
   sequelize,

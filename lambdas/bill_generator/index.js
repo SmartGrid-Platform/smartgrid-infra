@@ -14,7 +14,8 @@ exports.handler = async (event) => {
   
   const units = parseFloat(event.units || 0);
   const rate = parseFloat(event.rate || 0);
-  const amount = parseFloat((units * rate).toFixed(2));
+  const fixedCharge = parseFloat(event.fixedCharge || event.fixed_charge || 0);
+  const amount = parseFloat((units * rate + fixedCharge).toFixed(2));
   
   const { 
     consumerNumber = 'Unknown', 
@@ -65,6 +66,7 @@ exports.handler = async (event) => {
       doc.fontSize(12)
         .text(`Units Used: ${units.toFixed(2)} kWh`)
         .text(`Rate: ₹${rate.toFixed(2)} / kWh`)
+        .text(`Fixed Charge: ₹${fixedCharge.toFixed(2)}`)
         .moveDown()
         .fontSize(14)
         .text(`Grand Total: ₹${amount.toFixed(2)}`, { stroke: true });

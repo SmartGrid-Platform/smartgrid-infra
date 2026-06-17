@@ -4,7 +4,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const swaggerUi = require('swagger-ui-express');
 const swaggerDocument = require('./swagger');
-const { Consumer, User, Meter, Bill, Recharge, Inspection, Notification } = require('../../shared/database/models');
+const { Consumer, User, Meter, Bill, Recharge, Inspection, Notification, Tariff } = require('../../shared/database/models');
 const { authenticate, authorize } = require('./middleware/auth');
 
 const app = express();
@@ -161,7 +161,7 @@ app.put('/api/consumers/:id/status', authenticate, authorize(['STAFF', 'SUPERVIS
 
 // POST assign meter to consumer (Staff/Admin only)
 app.post('/api/consumers/assign-meter', authenticate, authorize(['STAFF', 'SUPERVISOR', 'ADMIN']), async (req, res) => {
-  const { consumerId, meterId, installationDate } = req.body;
+  const { consumerId, meterId, tariffId, installationDate } = req.body;
 
   if (!consumerId || !meterId) {
     return res.status(400).json({ error: 'Consumer ID and Meter ID are required' });
@@ -178,6 +178,14 @@ app.post('/api/consumers/assign-meter', authenticate, authorize(['STAFF', 'SUPER
       return res.status(404).json({ error: 'Meter not found' });
     }
 
+    if (tariffId) {
+      const tariff = await Tariff.findByPk(tariffId);
+      if (!tariff) {
+        return res.status(404).json({ error: 'Tariff plan not found' });
+      }
+      meter.tariff_id = tariffId;
+    }
+
     meter.consumer_id = consumerId;
     meter.installation_date = installationDate || new Date().toISOString().split('T')[0];
     await meter.save();
@@ -186,12 +194,13 @@ app.post('/api/consumers/assign-meter', authenticate, authorize(['STAFF', 'SUPER
       message: 'Meter assigned successfully',
       consumerId,
       meterId,
+      tariffId: meter.tariff_id,
       meterNumber: meter.meter_number,
       installationDate: meter.installation_date
     });
   } catch (error) {
     console.error('Assign Meter Error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ error: `Internal server error: ${error.message}` });
   }
 });
 
