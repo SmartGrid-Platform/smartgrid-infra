@@ -11,7 +11,7 @@ const userSessions = new Map();
 router.post('/chat', authenticate, async (req, res) => {
   console.log('[CHAT] Received chat request');
   const { message, sessionId } = req.body;
-  const consumerId = req.user?.id; 
+  const consumerId = req.user?.consumerId || null; 
   const authHeader = req.headers.authorization;
   
   if (!message) {
@@ -19,14 +19,14 @@ router.post('/chat', authenticate, async (req, res) => {
     return res.status(400).json({ error: 'Message is required' });
   }
 
-  if (!consumerId) {
+  if (!req.user || !req.user.id) {
     console.error('[CHAT] Unauthorized access: missing user ID');
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  console.log(`[CHAT] Authenticated user: ${consumerId}`);
+  console.log(`[CHAT] Authenticated user: ${req.user.email} (Role: ${req.user.role}, Consumer ID: ${consumerId})`);
 
-  const sId = sessionId || `session_${consumerId}_${Date.now()}`;
+  const sId = sessionId || `session_${req.user.id}_${Date.now()}`;
   
   if (!userSessions.has(sId)) {
     userSessions.set(sId, {
@@ -54,11 +54,19 @@ router.post('/chat', authenticate, async (req, res) => {
     console.log(`[CHAT] Initializing AI assistant agent for session ${sId}`);
     const agent = await createAgent();
     
-    console.log(`[CHAT] Invoking agent for user ${consumerId} with message history length: ${config.messages.length}`);
+    console.log(`[CHAT] Invoking agent with message history length: ${config.messages.length}`);
     const result = await agent.invoke({
       messages: config.messages,
       consumerId: config.consumerId,
-      authHeader: config.authHeader
+      authHeader: config.authHeader,
+      user: {
+        id: req.user.id,
+        name: req.user.name,
+        email: req.user.email,
+        role: req.user.role,
+        consumerId: consumerId,
+        consumerNumber: req.user.consumerNumber || null
+      }
     }, {
       configurable: {
         thread_id: sId
@@ -84,7 +92,7 @@ router.post('/chat', authenticate, async (req, res) => {
 router.post('/explain-bill', authenticate, async (req, res) => {
   console.log('[EXPLAIN] Received explain-bill request');
   const { billId } = req.body;
-  const consumerId = req.user?.id; 
+  const consumerId = req.user?.consumerId || null; 
   const authHeader = req.headers.authorization;
 
   if (!billId) {
@@ -92,13 +100,13 @@ router.post('/explain-bill', authenticate, async (req, res) => {
     return res.status(400).json({ error: 'Bill ID is required' });
   }
 
-  if (!consumerId) {
+  if (!req.user || !req.user.id) {
     console.error('[EXPLAIN] Unauthorized access');
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
   try {
-    console.log(`[EXPLAIN] Initializing agent to explain bill ${billId} for user ${consumerId}`);
+    console.log(`[EXPLAIN] Initializing agent to explain bill ${billId} for user ${req.user.id}`);
     const agent = await createAgent();
     
     const message = `Please explain my bill with ID ${billId}. Give a breakdown, compare it to past usage, and provide energy-saving recommendations based on my historical usage patterns.`;
@@ -106,7 +114,15 @@ router.post('/explain-bill', authenticate, async (req, res) => {
     const result = await agent.invoke({
       messages: [{ role: 'user', content: message }],
       consumerId,
-      authHeader
+      authHeader,
+      user: {
+        id: req.user.id,
+        name: req.user.name,
+        email: req.user.email,
+        role: req.user.role,
+        consumerId: consumerId,
+        consumerNumber: req.user.consumerNumber || null
+      }
     }, {
       configurable: {
         thread_id: `explain_${billId}_${Date.now()}`

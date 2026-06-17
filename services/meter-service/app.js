@@ -63,7 +63,10 @@ app.get('/api/meters/consumer/:consumerId', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Unauthorized to view these meters' });
     }
 
-    const meters = await Meter.findAll({ where: { consumer_id: consumerId } });
+    const meters = await Meter.findAll({
+      where: { consumer_id: consumerId },
+      include: [{ model: Tariff, as: 'tariff' }]
+    });
     return res.status(200).json(meters);
   } catch (error) {
     console.error('Fetch Consumer Meters Error:', error);
@@ -76,7 +79,10 @@ app.get('/api/meters/:id', authenticate, async (req, res) => {
   const { id } = req.params;
   try {
     const meter = await Meter.findByPk(id, {
-      include: [{ model: Consumer, as: 'consumer' }]
+      include: [
+        { model: Consumer, as: 'consumer' },
+        { model: Tariff, as: 'tariff' }
+      ]
     });
 
     if (!meter) {

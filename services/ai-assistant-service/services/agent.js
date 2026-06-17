@@ -35,12 +35,32 @@ You behave like a combination of:
 * Electricity Domain Expert
 * Utility Operations Assistant
 
+15. If uncertain, state uncertainty and explain why.
+16. TARIFF VALUE FIELD INTERPRETATION:
+    - The "rate_per_unit" field represents the cost per unit of energy consumed (in ₹ per kWh).
+    - The "fixed_charge" field represents the flat monthly customer charge.
+    - NEVER confuse "rate_per_unit" with "fixed_charge". For example, if the rate per unit is ₹0.15 and fixed charge is ₹20.00, do not say the tariff rate is ₹20.00.
+
+You behave like a combination of:
+* Utility Billing Expert
+* Energy Consultant
+* Smart Meter Analyst
+* Customer Support Agent
+* Electricity Domain Expert
+* Utility Operations Assistant
+
 while remaining grounded in actual SmartGrid data whenever available.`;
 
-const runConverseAgent = async (messages, consumerId, authHeader) => {
+const runConverseAgent = async (messages, consumerId, authHeader, user) => {
   const client = bedrockProvider.client;
   const modelId = bedrockProvider.primaryModel;
   const config = { consumerId, authHeader };
+
+  // Append user context block dynamically to the system prompt
+  let dynamicSystemPrompt = SYSTEM_PROMPT;
+  if (user) {
+    dynamicSystemPrompt += `\n\nActive Logged-in User Context:\n${JSON.stringify(user, null, 2)}`;
+  }
 
   // 1. Format messages array for Bedrock Converse command
   const formattedMessages = messages.map(msg => {
@@ -55,14 +75,14 @@ const runConverseAgent = async (messages, consumerId, authHeader) => {
     };
   });
 
-  console.log(`[AGENT] Starting Bedrock Converse loop for user ${consumerId}. Message count: ${formattedMessages.length}`);
+  console.log(`[AGENT] Starting Bedrock Converse loop for user ${consumerId || 'N/A'} (${user?.email || 'unknown'}). Message count: ${formattedMessages.length}`);
 
   // 2. Loop to handle model execution and tool calls (limit to 5 rounds)
   for (let round = 0; round < 5; round++) {
     const command = new ConverseCommand({
       modelId,
       messages: formattedMessages,
-      system: [{ text: SYSTEM_PROMPT }],
+      system: [{ text: dynamicSystemPrompt }],
       toolConfig: { tools: toolsList },
       inferenceConfig: {
         maxTokens: 2000,
@@ -128,9 +148,9 @@ const runConverseAgent = async (messages, consumerId, authHeader) => {
 
 const createAgent = () => {
   return {
-    invoke: async ({ messages, consumerId, authHeader }) => {
+    invoke: async ({ messages, consumerId, authHeader, user }) => {
       try {
-        const reply = await runConverseAgent(messages, consumerId, authHeader);
+        const reply = await runConverseAgent(messages, consumerId, authHeader, user);
         return {
           messages: [...messages, { role: 'assistant', content: reply }]
         };
