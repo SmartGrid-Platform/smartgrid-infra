@@ -32,7 +32,8 @@ router.post('/chat', authenticate, async (req, res) => {
     userSessions.set(sId, {
       configurable: { thread_id: sId },
       consumerId,
-      authHeader
+      authHeader,
+      messages: []
     });
   }
   
@@ -40,13 +41,22 @@ router.post('/chat', authenticate, async (req, res) => {
   config.consumerId = consumerId;
   config.authHeader = authHeader; // pass down for internal API calls
   
+  // Initialize messages history if missing, push current message
+  config.messages = config.messages || [];
+  config.messages.push({ role: 'user', content: message });
+  
+  // Bound context size to last 14 messages (7 turns) to prevent token bloat
+  if (config.messages.length > 14) {
+    config.messages = config.messages.slice(-14);
+  }
+  
   try {
-    console.log(`[CHAT] Initializing LangGraph agent for session ${sId}`);
+    console.log(`[CHAT] Initializing AI assistant agent for session ${sId}`);
     const agent = await createAgent();
     
-    console.log(`[CHAT] Invoking agent for user ${consumerId} with message: "${message}"`);
+    console.log(`[CHAT] Invoking agent for user ${consumerId} with message history length: ${config.messages.length}`);
     const result = await agent.invoke({
-      messages: [{ role: 'user', content: message }],
+      messages: config.messages,
       consumerId: config.consumerId,
       authHeader: config.authHeader
     }, {
@@ -57,6 +67,9 @@ router.post('/chat', authenticate, async (req, res) => {
 
     const aiMessage = result.messages[result.messages.length - 1];
     console.log(`[CHAT] Agent response generated successfully`);
+    
+    // Save assistant reply to session history
+    config.messages.push({ role: 'assistant', content: aiMessage.content });
     
     return res.status(200).json({
       reply: aiMessage.content,
