@@ -9,7 +9,6 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import ConsumerDashboard from './pages/ConsumerDashboard';
 import StaffDashboard from './pages/StaffDashboard';
-import SupervisorDashboard from './pages/SupervisorDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import ConsumerAssistant from './pages/ConsumerAssistant';
 import ConsumerBills from './pages/ConsumerBills';
@@ -31,7 +30,6 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
     console.warn(`[DEBUG] Role "${user?.role}" is not in allowed roles:`, allowedRoles, 'Redirecting to correct portal.');
     // Redirect to correct dashboard based on actual role
     if (user?.role === 'ADMIN') return <Navigate to="/admin" replace />;
-    if (user?.role === 'SUPERVISOR') return <Navigate to="/supervisor" replace />;
     if (user?.role === 'STAFF') return <Navigate to="/staff" replace />;
     return <Navigate to="/consumer" replace />;
   }
@@ -50,7 +48,6 @@ const HomeRedirect = () => {
   }
 
   if (user?.role === 'ADMIN') return <Navigate to="/admin" replace />;
-  if (user?.role === 'SUPERVISOR') return <Navigate to="/supervisor" replace />;
   if (user?.role === 'STAFF') return <Navigate to="/staff" replace />;
   return <Navigate to="/consumer" replace />;
 };
@@ -108,19 +105,9 @@ function AppRoutes() {
           <Route
             path="/staff"
             element={
-              <ProtectedRoute allowedRoles={['STAFF', 'SUPERVISOR', 'ADMIN']}>
+              <ProtectedRoute allowedRoles={['STAFF', 'ADMIN']}>
                 <ErrorBoundary>
                   <StaffDashboard />
-                </ErrorBoundary>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/supervisor"
-            element={
-              <ProtectedRoute allowedRoles={['SUPERVISOR']}>
-                <ErrorBoundary>
-                  <SupervisorDashboard />
                 </ErrorBoundary>
               </ProtectedRoute>
             }

@@ -71,12 +71,12 @@ const getConsumerMetersAndUsageTool = new DynamicTool({
       if (!consumerId) return "Error: Missing consumer ID in context";
       
       const meterRes = await axios.get(`${METER_URL}/api/meters/consumer/${consumerId}`, { headers });
-      const meters = meterRes.data.meters || [];
+      const meters = Array.isArray(meterRes.data) ? meterRes.data : (meterRes.data?.meters || []);
       
       let readings = [];
       if (meters.length > 0) {
         const readingRes = await axios.get(`${METER_URL}/api/meters/${meters[0].id}/readings`, { headers });
-        readings = readingRes.data.readings || [];
+        readings = Array.isArray(readingRes.data) ? readingRes.data : (readingRes.data?.readings || []);
       }
       
       return JSON.stringify({ meters, recent_readings: readings.slice(-15) });

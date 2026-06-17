@@ -49,8 +49,6 @@ const Login = () => {
       // Dynamic routing based on user role
       if (user.role === 'ADMIN') {
         navigate('/admin');
-      } else if (user.role === 'SUPERVISOR') {
-        navigate('/supervisor');
       } else if (user.role === 'STAFF') {
         navigate('/staff');
       } else {

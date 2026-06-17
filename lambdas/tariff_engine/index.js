@@ -1,11 +1,6 @@
 exports.handler = async (event) => {
   console.log("Event:", JSON.stringify(event));
-  const tariff_name = event.tariff_name || 'Standard';
-  let rate_per_unit = 0.15;
-  if (tariff_name.toLowerCase().includes('commercial')) {
-    rate_per_unit = 0.20;
-  } else if (tariff_name.toLowerCase().includes('industrial')) {
-    rate_per_unit = 0.25;
-  }
-  return { rate_per_unit };
+  const rate_per_unit = event.rate_per_unit !== undefined ? parseFloat(event.rate_per_unit) : 0.00;
+  const fixed_charge = event.fixed_charge !== undefined ? parseFloat(event.fixed_charge) : 0.00;
+  return { rate_per_unit, fixed_charge };
 };

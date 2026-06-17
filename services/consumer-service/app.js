@@ -46,8 +46,8 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'healthy', service: 'consumer-service', timestamp: new Date() });
 });
 
-// GET all consumers (Staff/Supervisor/Admin only)
-app.get('/api/consumers', authenticate, authorize(['STAFF', 'SUPERVISOR', 'ADMIN']), async (req, res) => {
+// GET all consumers (Staff/Admin only)
+app.get('/api/consumers', authenticate, authorize(['STAFF', 'ADMIN']), async (req, res) => {
   try {
     const consumers = await Consumer.findAll({
       include: [
@@ -136,9 +136,8 @@ app.put('/api/consumers/:id', authenticate, async (req, res) => {
   }
 });
 
-// PUT internal/staff route to update connection status or balance
-// This route is called when consumption is recorded (Meter Service) or balance is recharged (Billing Service)
-app.put('/api/consumers/:id/status', authenticate, authorize(['STAFF', 'SUPERVISOR', 'ADMIN']), async (req, res) => {
+// PUT toggle connection status or update balance (Staff/Admin only)
+app.put('/api/consumers/:id/status', authenticate, authorize(['STAFF', 'ADMIN']), async (req, res) => {
   const { id } = req.params;
   const { connection_status, balance } = req.body;
 
@@ -160,8 +159,8 @@ app.put('/api/consumers/:id/status', authenticate, authorize(['STAFF', 'SUPERVIS
 });
 
 // POST assign meter to consumer (Staff/Admin only)
-app.post('/api/consumers/assign-meter', authenticate, authorize(['STAFF', 'SUPERVISOR', 'ADMIN']), async (req, res) => {
-  const { consumerId, meterId, tariffId, installationDate } = req.body;
+app.post('/api/consumers/assign-meter', authenticate, authorize(['STAFF', 'ADMIN']), async (req, res) => {
+  const { consumerId, meterId } = req.body;
 
   if (!consumerId || !meterId) {
     return res.status(400).json({ error: 'Consumer ID and Meter ID are required' });
@@ -178,16 +177,7 @@ app.post('/api/consumers/assign-meter', authenticate, authorize(['STAFF', 'SUPER
       return res.status(404).json({ error: 'Meter not found' });
     }
 
-    if (tariffId) {
-      const tariff = await Tariff.findByPk(tariffId);
-      if (!tariff) {
-        return res.status(404).json({ error: 'Tariff plan not found' });
-      }
-      meter.tariff_id = tariffId;
-    }
-
     meter.consumer_id = consumerId;
-    meter.installation_date = installationDate || new Date().toISOString().split('T')[0];
     await meter.save();
 
     return res.status(200).json({
@@ -204,8 +194,8 @@ app.post('/api/consumers/assign-meter', authenticate, authorize(['STAFF', 'SUPER
   }
 });
 
-// DELETE consumer profile and user account (Staff/Supervisor/Admin only)
-app.delete('/api/consumers/:id', authenticate, authorize(['STAFF', 'SUPERVISOR', 'ADMIN']), async (req, res) => {
+// DELETE consumer profile and user account (Staff/Admin only)
+app.delete('/api/consumers/:id', authenticate, authorize(['STAFF', 'ADMIN']), async (req, res) => {
   const { id } = req.params;
   try {
     const consumer = await Consumer.findByPk(id);

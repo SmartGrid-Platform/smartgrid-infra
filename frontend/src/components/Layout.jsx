@@ -82,7 +82,6 @@ const Layout = ({ children }) => {
   const getRoleColor = (role) => {
     switch (role) {
       case 'ADMIN': return 'error';
-      case 'SUPERVISOR': return 'warning';
       case 'STAFF': return 'info';
       default: return 'success';
     }

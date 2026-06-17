@@ -36,8 +36,8 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'healthy', service: 'meter-service', timestamp: new Date() });
 });
 
-// GET all meters (Staff/Supervisor/Admin only)
-app.get('/api/meters', authenticate, authorize(['STAFF', 'SUPERVISOR', 'ADMIN']), async (req, res) => {
+// GET all meters (Staff/Admin only)
+app.get('/api/meters', authenticate, authorize(['STAFF', 'ADMIN']), async (req, res) => {
   try {
     const meters = await Meter.findAll({
       include: [{ model: Consumer, as: 'consumer', include: [{ model: User, as: 'user', attributes: ['name', 'email'] }] }]
@@ -94,9 +94,9 @@ app.get('/api/meters/:id', authenticate, async (req, res) => {
   }
 });
 
-// POST create a new meter (Staff/Supervisor/Admin only)
-app.post('/api/meters', authenticate, authorize(['STAFF', 'SUPERVISOR', 'ADMIN']), async (req, res) => {
-  const { meter_number } = req.body;
+// POST create a new meter (Staff/Admin only)
+app.post('/api/meters', authenticate, authorize(['STAFF', 'ADMIN']), async (req, res) => {
+  const { meter_number, meter_type, installation_date, status, tariff_id } = req.body;
 
   if (!meter_number) {
     return res.status(400).json({ error: 'Meter number is required' });
@@ -108,9 +108,19 @@ app.post('/api/meters', authenticate, authorize(['STAFF', 'SUPERVISOR', 'ADMIN']
       return res.status(400).json({ error: 'Meter number already exists' });
     }
 
+    if (tariff_id) {
+      const tariff = await Tariff.findByPk(tariff_id);
+      if (!tariff) {
+        return res.status(400).json({ error: 'Selected tariff plan does not exist' });
+      }
+    }
+
     const meter = await Meter.create({
       meter_number,
-      status: 'ACTIVE'
+      meter_type: meter_type || 'SMART',
+      installation_date: installation_date || new Date().toISOString().split('T')[0],
+      status: status || 'ACTIVE',
+      tariff_id: tariff_id || null
     });
 
     return res.status(201).json({ message: 'Meter created successfully', meter });
@@ -121,8 +131,8 @@ app.post('/api/meters', authenticate, authorize(['STAFF', 'SUPERVISOR', 'ADMIN']
 });
 
 // PUT update meter status (e.g. report TAMPERED or set INACTIVE)
-// Allowed for Staff, Supervisor, and Admin
-app.put('/api/meters/:id', authenticate, authorize(['STAFF', 'SUPERVISOR', 'ADMIN']), async (req, res) => {
+// Allowed for Staff and Admin
+app.put('/api/meters/:id', authenticate, authorize(['STAFF', 'ADMIN']), async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
 
@@ -198,7 +208,7 @@ app.get('/api/meters/:id/readings', authenticate, async (req, res) => {
 });
 
 // POST add reading, calculate cost, deduct balance, verify status/alerts (Staff/Admin/Meters)
-app.post('/api/meters/:id/readings', authenticate, authorize(['STAFF', 'SUPERVISOR', 'ADMIN']), async (req, res) => {
+app.post('/api/meters/:id/readings', authenticate, authorize(['STAFF', 'ADMIN']), async (req, res) => {
   const { id } = req.params;
   const { units_consumed } = req.body;
 
@@ -243,22 +253,17 @@ app.post('/api/meters/:id/readings', authenticate, authorize(['STAFF', 'SUPERVIS
     }
     
     if (!tariff) {
-      // Fallback to active global tariff
-      tariff = await Tariff.findOne({
-        where: { status: 'ACTIVE' },
-        order: [['effective_date', 'DESC'], ['id', 'DESC']],
-        transaction
-      });
-    }
-
-    if (!tariff) {
       await transaction.rollback();
-      return res.status(400).json({ error: 'No active tariff plan is assigned to this meter or configured globally.' });
+      return res.status(400).json({ error: 'No active tariff plan is assigned to this meter.' });
     }
     
     const tariffResult = await invokeLambda(
       process.env.LAMBDA_TARIFF_ENGINE,
-      { tariff_name: tariff.tariff_name },
+      { 
+        tariff_name: tariff.tariff_name,
+        rate_per_unit: parseFloat(tariff.rate_per_unit),
+        fixed_charge: parseFloat(tariff.fixed_charge || 0)
+      },
       (payload) => ({ rate_per_unit: parseFloat(tariff.rate_per_unit) })
     );
     const rate = tariffResult.rate_per_unit !== undefined ? tariffResult.rate_per_unit : parseFloat(tariff.rate_per_unit);
@@ -361,8 +366,8 @@ Notice: Your balance is running low. Please recharge soon to avoid automatic dis
   }
 });
 
-// DELETE meter (Staff/Supervisor/Admin only)
-app.delete('/api/meters/:id', authenticate, authorize(['STAFF', 'SUPERVISOR', 'ADMIN']), async (req, res) => {
+// DELETE meter (Staff/Admin only)
+app.delete('/api/meters/:id', authenticate, authorize(['STAFF', 'ADMIN']), async (req, res) => {
   const { id } = req.params;
   try {
     const meter = await Meter.findByPk(id);

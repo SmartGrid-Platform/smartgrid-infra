@@ -57,17 +57,7 @@ async function bootstrapAdmin() {
     });
     console.log(`\nSuccess: Admin user "${name}" (${email}) created successfully.`);
 
-    // Seed default tariffs
-    const { Tariff } = require('./models');
-    const tariffCount = await Tariff.count();
-    if (tariffCount === 0) {
-      await Tariff.bulkCreate([
-        { tariff_name: 'Residential', tariff_type: 'Residential', rate_per_unit: 6.50, fixed_charge: 100.00, status: 'ACTIVE', effective_date: '2026-06-01' },
-        { tariff_name: 'Commercial', tariff_type: 'Commercial', rate_per_unit: 8.25, fixed_charge: 250.00, status: 'ACTIVE', effective_date: '2026-06-01' },
-        { tariff_name: 'Industrial', tariff_type: 'Industrial', rate_per_unit: 10.00, fixed_charge: 500.00, status: 'ACTIVE', effective_date: '2026-06-01' }
-      ]);
-      console.log('Success: Residential, Commercial, and Industrial tariffs seeded.');
-    }
+    // Do not seed default tariffs (blank slate requested)
 
     process.exit(0);
   } catch (error) {

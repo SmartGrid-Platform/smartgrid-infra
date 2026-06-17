@@ -25,7 +25,7 @@ const User = sequelize.define('User', {
     allowNull: false
   },
   role: {
-    type: DataTypes.ENUM('CONSUMER', 'STAFF', 'SUPERVISOR', 'ADMIN'),
+    type: DataTypes.ENUM('CONSUMER', 'STAFF', 'ADMIN'),
     allowNull: false
   },
   status: {
@@ -110,6 +110,11 @@ const Meter = sequelize.define('Meter', {
       model: 'tariffs',
       key: 'id'
     }
+  },
+  meter_type: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    defaultValue: 'SMART'
   },
   installation_date: {
     type: DataTypes.DATEONLY,

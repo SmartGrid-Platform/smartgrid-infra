@@ -25,7 +25,7 @@ const swaggerDocument = {
                   name: { type: "string" },
                   email: { type: "string" },
                   password: { type: "string" },
-                  role: { type: "string", enum: ["CONSUMER", "STAFF", "SUPERVISOR", "ADMIN"] },
+                  role: { type: "string", enum: ["CONSUMER", "STAFF", "ADMIN"] },
                   address: { type: "string" },
                   phone: { type: "string" }
                 },

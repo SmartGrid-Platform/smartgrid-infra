@@ -114,7 +114,19 @@ app.delete('/api/tariffs/:id', authenticate, authorize(['ADMIN']), async (req, r
       return res.status(404).json({ error: 'Tariff plan not found' });
     }
 
-    // Set associated meters to null tariff to prevent DB constraint errors
+    // Validation: Cannot delete tariff currently assigned to active meters.
+    const activeMetersCount = await Meter.count({
+      where: {
+        tariff_id: id,
+        status: 'ACTIVE'
+      }
+    });
+
+    if (activeMetersCount > 0) {
+      return res.status(400).json({ error: 'Cannot delete tariff currently assigned to active meters.' });
+    }
+
+    // Set associated inactive/tampered meters tariff_id to null to prevent DB constraint errors
     await Meter.update({ tariff_id: null }, { where: { tariff_id: id } });
 
     await tariff.destroy();
@@ -125,8 +137,8 @@ app.delete('/api/tariffs/:id', authenticate, authorize(['ADMIN']), async (req, r
   }
 });
 
-// GET all recharges (Staff/Supervisor/Admin only)
-app.get('/api/recharges', authenticate, authorize(['STAFF', 'SUPERVISOR', 'ADMIN']), async (req, res) => {
+// GET all recharges (Staff/Admin only)
+app.get('/api/recharges', authenticate, authorize(['STAFF', 'ADMIN']), async (req, res) => {
   try {
     const recharges = await Recharge.findAll({
       include: [{ model: Consumer, as: 'consumer', include: [{ model: User, as: 'user', attributes: ['name', 'email'] }] }],
@@ -227,8 +239,8 @@ app.post('/api/recharges', authenticate, async (req, res) => {
   }
 });
 
-// GET all bills (Staff/Supervisor/Admin only)
-app.get('/api/bills', authenticate, authorize(['STAFF', 'SUPERVISOR', 'ADMIN']), async (req, res) => {
+// GET all bills (Staff/Admin only)
+app.get('/api/bills', authenticate, authorize(['STAFF', 'ADMIN']), async (req, res) => {
   try {
     const bills = await Bill.findAll({
       include: [{ model: Consumer, as: 'consumer', include: [{ model: User, as: 'user', attributes: ['name', 'email'] }] }],
@@ -264,7 +276,7 @@ app.get('/api/bills/consumer/:consumerId', authenticate, async (req, res) => {
 });
 
 // POST generate monthly bill for consumer (Staff/Admin only)
-app.post('/api/bills/generate', authenticate, authorize(['STAFF', 'SUPERVISOR', 'ADMIN']), async (req, res) => {
+app.post('/api/bills/generate', authenticate, authorize(['STAFF', 'ADMIN']), async (req, res) => {
   const { consumerId, billingMonth } = req.body; // billingMonth in YYYY-MM format
 
   if (!consumerId || !billingMonth || !/^\d{4}-\d{2}$/.test(billingMonth)) {
@@ -332,22 +344,28 @@ app.post('/api/bills/generate', authenticate, authorize(['STAFF', 'SUPERVISOR', 
     }
 
     if (!tariff) {
-      // Fallback to active global tariff
-      tariff = await Tariff.findOne({
-        where: { status: 'ACTIVE' },
-        order: [['effective_date', 'DESC'], ['id', 'DESC']],
-        transaction
-      });
-    }
-
-    if (!tariff) {
       await transaction.rollback();
-      return res.status(400).json({ error: 'No active tariff plan is assigned to this consumer or configured globally.' });
+      return res.status(400).json({ error: 'No active tariff plan is assigned to this consumer\'s meter.' });
     }
     
+    // Calculate previous reading & current reading
+    const previousReadings = await MeterReading.findAll({
+      where: {
+        meter_id: { [Op.in]: meterIds },
+        reading_date: { [Op.lt]: startDate }
+      },
+      transaction
+    });
+    const previousReading = previousReadings.reduce((sum, r) => sum + parseFloat(r.units_consumed), 0);
+    const currentReading = previousReading + totalUnits;
+
     const tariffResult = await invokeLambda(
       process.env.LAMBDA_TARIFF_ENGINE,
-      { tariff_name: tariff.tariff_name },
+      { 
+        tariff_name: tariff.tariff_name,
+        rate_per_unit: parseFloat(tariff.rate_per_unit),
+        fixed_charge: parseFloat(tariff.fixed_charge || 0)
+      },
       (payload) => ({ rate_per_unit: parseFloat(tariff.rate_per_unit), fixed_charge: parseFloat(tariff.fixed_charge || 0) })
     );
     const rate = tariffResult.rate_per_unit !== undefined ? tariffResult.rate_per_unit : parseFloat(tariff.rate_per_unit);
@@ -363,7 +381,13 @@ app.post('/api/bills/generate', authenticate, authorize(['STAFF', 'SUPERVISOR', 
       consumerName: consumer.user.name,
       consumerEmail: consumer.user.email,
       consumerPhone: consumer.phone,
-      consumerAddress: consumer.address
+      consumerAddress: consumer.address,
+      meterNumber: meterWithTariff.meter_number,
+      tariffPlan: tariff.tariff_name,
+      previousReading,
+      currentReading,
+      tax: 0.00,
+      paymentStatus: 'PAID'
     };
 
     const billResult = await invokeLambda(
@@ -544,8 +568,8 @@ app.get('/api/consumer/bills/:id/download', authenticate, async (req, res) => {
   }
 });
 
-// DELETE bill (Staff/Supervisor/Admin only)
-app.delete('/api/bills/:id', authenticate, authorize(['STAFF', 'SUPERVISOR', 'ADMIN']), async (req, res) => {
+// DELETE bill (Staff/Admin only)
+app.delete('/api/bills/:id', authenticate, authorize(['STAFF', 'ADMIN']), async (req, res) => {
   const { id } = req.params;
   try {
     const bill = await Bill.findByPk(id);

@@ -33,7 +33,8 @@ import {
   AccountBalanceWallet as RechargeIcon,
   AssignmentTurnedIn as AssignIcon,
   Add as AddIcon,
-  Delete as DeleteIcon
+  Delete as DeleteIcon,
+  GetApp as DownloadIcon
 } from '@mui/icons-material';
 
 const StaffDashboard = () => {
@@ -61,6 +62,10 @@ const StaffDashboard = () => {
   const [newConsumer, setNewConsumer] = useState({ name: '', email: '', password: '', address: '', phone: '' });
   const [assignMeterData, setAssignMeterData] = useState({ consumerId: '', meterId: '', tariffId: '', date: '' });
   const [newMeterNumber, setNewMeterNumber] = useState('');
+  const [newMeterType, setNewMeterType] = useState('SMART');
+  const [newMeterInstallationDate, setNewMeterInstallationDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newMeterStatus, setNewMeterStatus] = useState('ACTIVE');
+  const [newMeterTariffId, setNewMeterTariffId] = useState('');
   const [newReading, setNewReading] = useState({ meterId: '', units: '' });
   const [newBillData, setNewBillData] = useState({ consumerId: '', month: '' });
   const [newRechargeData, setNewRechargeData] = useState({ consumerId: '', amount: '' });
@@ -134,9 +139,19 @@ const StaffDashboard = () => {
     }
     setError('');
     try {
-      await meterApi.post('/meters', { meter_number: newMeterNumber });
+      await meterApi.post('/meters', {
+        meter_number: newMeterNumber,
+        meter_type: newMeterType,
+        installation_date: newMeterInstallationDate,
+        status: newMeterStatus,
+        tariff_id: newMeterTariffId ? parseInt(newMeterTariffId, 10) : null
+      });
       setSuccess('Meter provisioned successfully!');
       setNewMeterNumber('');
+      setNewMeterType('SMART');
+      setNewMeterInstallationDate(new Date().toISOString().split('T')[0]);
+      setNewMeterStatus('ACTIVE');
+      setNewMeterTariffId('');
       fetchData();
       setTimeout(() => {
         setOpenCreateMeter(false);
@@ -149,17 +164,15 @@ const StaffDashboard = () => {
 
   // 3. Assign Meter
   const handleAssignMeter = async () => {
-    if (!assignMeterData.consumerId || !assignMeterData.meterId || !assignMeterData.tariffId) {
-      setError('Please select consumer, meter, and tariff plan.');
+    if (!assignMeterData.consumerId || !assignMeterData.meterId) {
+      setError('Please select consumer and meter.');
       return;
     }
     setError('');
     try {
       await consumerApi.post('/consumers/assign-meter', {
         consumerId: parseInt(assignMeterData.consumerId, 10),
-        meterId: parseInt(assignMeterData.meterId, 10),
-        tariffId: parseInt(assignMeterData.tariffId, 10),
-        installationDate: assignMeterData.date || undefined
+        meterId: parseInt(assignMeterData.meterId, 10)
       });
       setSuccess('Meter assigned successfully!');
       setAssignMeterData({ consumerId: '', meterId: '', tariffId: '', date: '' });
@@ -170,6 +183,21 @@ const StaffDashboard = () => {
       }, 1500);
     } catch (err) {
       setError(err.response?.data?.error || 'Meter assignment failed.');
+    }
+  };
+
+  // Download PDF Bill
+  const handleDownloadBill = async (billId) => {
+    try {
+      const res = await billingApi.get(`/bills/${billId}/download`);
+      if (res.data.downloadUrl) {
+        window.open(res.data.downloadUrl, '_blank');
+      } else {
+        alert("Failed to get download URL");
+      }
+    } catch (error) {
+      console.error("Download Error", error);
+      alert("Download failed");
     }
   };
 
@@ -430,6 +458,9 @@ const StaffDashboard = () => {
                       <Chip label={b?.status || 'PENDING'} color="success" size="small" sx={{ fontWeight: 'bold' }} />
                     </TableCell>
                     <TableCell align="right">
+                      <IconButton color="secondary" onClick={() => handleDownloadBill(b?.id)} title="Download PDF" sx={{ mr: 1, color: '#26C6DA' }}>
+                        <DownloadIcon />
+                      </IconButton>
                       <Button size="small" variant="contained" color="error" startIcon={<DeleteIcon />} onClick={() => triggerDeleteConfirm('bill', b?.id, 'Are you sure you want to delete this bill? This will also remove the statement HTML file from S3 bucket.')}>
                         Delete
                       </Button>
@@ -502,10 +533,51 @@ const StaffDashboard = () => {
       {/* 2. Provision Meter Dialog */}
       <Dialog open={openCreateMeter} onClose={() => setOpenCreateMeter(false)}>
         <DialogTitle sx={{ backgroundColor: '#102733' }}>Provision New Smart Meter</DialogTitle>
-        <DialogContent sx={{ backgroundColor: '#102733', pt: 2, minWidth: 320 }}>
-          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-          {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
-          <TextField label="Meter Serial Number" value={newMeterNumber} onChange={(e) => setNewMeterNumber(e.target.value)} fullWidth />
+        <DialogContent sx={{ backgroundColor: '#102733', pt: 2, display: 'flex', flexDirection: 'column', gap: 2, minWidth: 340 }}>
+          {error && <Alert severity="error">{error}</Alert>}
+          {success && <Alert severity="success">{success}</Alert>}
+          <TextField label="Meter Serial Number" placeholder="e.g. MTR-9840294" value={newMeterNumber} onChange={(e) => setNewMeterNumber(e.target.value)} fullWidth />
+          <TextField
+            select
+            label="Meter Type"
+            value={newMeterType}
+            onChange={(e) => setNewMeterType(e.target.value)}
+            fullWidth
+          >
+            <MenuItem value="SMART">SMART</MenuItem>
+            <MenuItem value="PREPAID">PREPAID</MenuItem>
+            <MenuItem value="BI-DIRECTIONAL">BI-DIRECTIONAL</MenuItem>
+          </TextField>
+          <TextField
+            type="date"
+            label="Installation Date"
+            InputLabelProps={{ shrink: true }}
+            value={newMeterInstallationDate}
+            onChange={(e) => setNewMeterInstallationDate(e.target.value)}
+            fullWidth
+          />
+          <TextField
+            select
+            label="Status"
+            value={newMeterStatus}
+            onChange={(e) => setNewMeterStatus(e.target.value)}
+            fullWidth
+          >
+            <MenuItem value="ACTIVE">ACTIVE</MenuItem>
+            <MenuItem value="INACTIVE">INACTIVE</MenuItem>
+          </TextField>
+          <TextField
+            select
+            label="Tariff Plan"
+            value={newMeterTariffId}
+            onChange={(e) => setNewMeterTariffId(e.target.value)}
+            fullWidth
+          >
+            <MenuItem value=""><em>None</em></MenuItem>
+            {tariffs.map((t) => (
+              <MenuItem key={t.id} value={t.id}>{t.tariff_name} (₹{parseFloat(t.rate_per_unit).toFixed(2)}/kWh)</MenuItem>
+            ))}
+          </TextField>
         </DialogContent>
         <DialogActions sx={{ backgroundColor: '#102733' }}>
           <Button onClick={() => setOpenCreateMeter(false)} color="inherit">Cancel</Button>
@@ -545,27 +617,6 @@ const StaffDashboard = () => {
               </MenuItem>
             ))}
           </TextField>
-          <TextField
-            select
-            label="Tariff Plan"
-            value={assignMeterData.tariffId}
-            onChange={(e) => setAssignMeterData({ ...assignMeterData, tariffId: e.target.value })}
-            fullWidth
-          >
-            {(Array.isArray(tariffs) ? tariffs : []).map((t) => (
-              <MenuItem key={t?.id} value={t?.id}>
-                {t?.tariff_name} (₹{parseFloat(t?.rate_per_unit).toFixed(2)}/unit, ₹{parseFloat(t?.fixed_charge || 0).toFixed(2)} fixed)
-              </MenuItem>
-            ))}
-          </TextField>
-          <TextField
-            type="date"
-            label="Installation Date"
-            InputLabelProps={{ shrink: true }}
-            value={assignMeterData.date}
-            onChange={(e) => setAssignMeterData({ ...assignMeterData, date: e.target.value })}
-            fullWidth
-          />
         </DialogContent>
         <DialogActions sx={{ backgroundColor: '#102733' }}>
           <Button onClick={() => setOpenAssignMeter(false)} color="inherit">Cancel</Button>

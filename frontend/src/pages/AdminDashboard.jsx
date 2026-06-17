@@ -65,6 +65,10 @@ const AdminDashboard = () => {
   const [editTariffData, setEditTariffData] = useState({ id: '', tariff_name: '', tariff_type: 'Residential', rate_per_unit: '', fixed_charge: '0.00', status: 'ACTIVE', description: '', date: '' });
   const [editUserData, setEditUserData] = useState({ id: '', name: '', email: '', password: '', status: 'ACTIVE' });
   const [newMeterNumber, setNewMeterNumber] = useState('');
+  const [newMeterType, setNewMeterType] = useState('SMART');
+  const [newMeterInstallationDate, setNewMeterInstallationDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newMeterStatus, setNewMeterStatus] = useState('ACTIVE');
+  const [newMeterTariffId, setNewMeterTariffId] = useState('');
 
   const fetchData = async () => {
     setLoading(true);
@@ -247,9 +251,19 @@ const AdminDashboard = () => {
     }
     setError('');
     try {
-      await meterApi.post('/meters', { meter_number: newMeterNumber });
+      await meterApi.post('/meters', {
+        meter_number: newMeterNumber,
+        meter_type: newMeterType,
+        installation_date: newMeterInstallationDate,
+        status: newMeterStatus,
+        tariff_id: newMeterTariffId ? parseInt(newMeterTariffId, 10) : null
+      });
       setSuccess('Smart Meter provisioned successfully!');
       setNewMeterNumber('');
+      setNewMeterType('SMART');
+      setNewMeterInstallationDate(new Date().toISOString().split('T')[0]);
+      setNewMeterStatus('ACTIVE');
+      setNewMeterTariffId('');
       fetchData();
       setTimeout(() => {
         setOpenProvisionMeter(false);
@@ -290,13 +304,11 @@ const AdminDashboard = () => {
   // Statistics Data
   const safeUsers = Array.isArray(users) ? users : [];
   const adminCount = safeUsers.filter(u => u?.role === 'ADMIN').length;
-  const supervisorCount = safeUsers.filter(u => u?.role === 'SUPERVISOR').length;
   const staffCount = safeUsers.filter(u => u?.role === 'STAFF').length;
   const consumerCountData = safeUsers.filter(u => u?.role === 'CONSUMER').length;
 
   const usersRoleChartData = [
     { name: 'Admin', count: adminCount },
-    { name: 'Supervisor', count: supervisorCount },
     { name: 'Staff', count: staffCount },
     { name: 'Consumer', count: consumerCountData }
   ];
@@ -425,7 +437,7 @@ const AdminDashboard = () => {
                     <TableCell><strong>{u.name}</strong></TableCell>
                     <TableCell>{u.email}</TableCell>
                     <TableCell>
-                      <Chip label={u.role} color={u.role === 'ADMIN' ? 'error' : u.role === 'SUPERVISOR' ? 'warning' : 'info'} size="small" />
+                      <Chip label={u.role} color={u.role === 'ADMIN' ? 'error' : 'info'} size="small" />
                     </TableCell>
                     <TableCell>
                       <Chip label={u.status} color={u.status === 'ACTIVE' ? 'success' : 'default'} size="small" />
@@ -502,6 +514,8 @@ const AdminDashboard = () => {
                 <TableRow>
                   <TableCell>ID</TableCell>
                   <TableCell>Meter Number</TableCell>
+                  <TableCell>Type</TableCell>
+                  <TableCell>Tariff Plan</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Consumer ID</TableCell>
                   <TableCell>Installation Date</TableCell>
@@ -513,6 +527,8 @@ const AdminDashboard = () => {
                   <TableRow key={m.id}>
                     <TableCell>{m.id}</TableCell>
                     <TableCell><strong>{m.meter_number}</strong></TableCell>
+                    <TableCell>{m.meter_type || 'SMART'}</TableCell>
+                    <TableCell>{m.tariff ? m.tariff.tariff_name : 'N/A'}</TableCell>
                     <TableCell>
                       <Chip label={m.status} color={m.status === 'ACTIVE' ? 'success' : m.status === 'TAMPERED' ? 'error' : 'default'} size="small" />
                     </TableCell>
@@ -651,7 +667,6 @@ const AdminDashboard = () => {
             fullWidth
           >
             <MenuItem value="STAFF">STAFF</MenuItem>
-            <MenuItem value="SUPERVISOR">SUPERVISOR</MenuItem>
             <MenuItem value="ADMIN">ADMIN</MenuItem>
           </TextField>
         </DialogContent>
@@ -779,7 +794,50 @@ const AdminDashboard = () => {
       <Dialog open={openProvisionMeter} onClose={() => setOpenProvisionMeter(false)}>
         <DialogTitle sx={{ backgroundColor: '#102733' }}>Provision New Smart Meter</DialogTitle>
         <DialogContent sx={{ backgroundColor: '#102733', pt: 2, display: 'flex', flexDirection: 'column', gap: 2, minWidth: 340 }}>
+          {error && <Alert severity="error">{error}</Alert>}
+          {success && <Alert severity="success">{success}</Alert>}
           <TextField label="Meter Serial Number" placeholder="e.g. MTR-9840294" value={newMeterNumber} onChange={(e) => setNewMeterNumber(e.target.value)} fullWidth />
+          <TextField
+            select
+            label="Meter Type"
+            value={newMeterType}
+            onChange={(e) => setNewMeterType(e.target.value)}
+            fullWidth
+          >
+            <MenuItem value="SMART">SMART</MenuItem>
+            <MenuItem value="PREPAID">PREPAID</MenuItem>
+            <MenuItem value="BI-DIRECTIONAL">BI-DIRECTIONAL</MenuItem>
+          </TextField>
+          <TextField
+            type="date"
+            label="Installation Date"
+            InputLabelProps={{ shrink: true }}
+            value={newMeterInstallationDate}
+            onChange={(e) => setNewMeterInstallationDate(e.target.value)}
+            fullWidth
+          />
+          <TextField
+            select
+            label="Status"
+            value={newMeterStatus}
+            onChange={(e) => setNewMeterStatus(e.target.value)}
+            fullWidth
+          >
+            <MenuItem value="ACTIVE">ACTIVE</MenuItem>
+            <MenuItem value="INACTIVE">INACTIVE</MenuItem>
+          </TextField>
+          <TextField
+            select
+            label="Tariff Plan"
+            value={newMeterTariffId}
+            onChange={(e) => setNewMeterTariffId(e.target.value)}
+            fullWidth
+          >
+            <MenuItem value=""><em>None</em></MenuItem>
+            {tariffs.map((t) => (
+              <MenuItem key={t.id} value={t.id}>{t.tariff_name} (₹{parseFloat(t.rate_per_unit).toFixed(2)}/kWh)</MenuItem>
+            ))}
+          </TextField>
         </DialogContent>
         <DialogActions sx={{ backgroundColor: '#102733' }}>
           <Button onClick={() => setOpenProvisionMeter(false)} color="inherit">Cancel</Button>

@@ -68,8 +68,8 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'healthy', service: 'alert-service', timestamp: new Date() });
 });
 
-// GET all notifications (Staff/Supervisor/Admin only)
-app.get('/api/alerts', authenticate, authorize(['STAFF', 'SUPERVISOR', 'ADMIN']), async (req, res) => {
+// GET all notifications (Staff/Admin only)
+app.get('/api/alerts', authenticate, authorize(['STAFF', 'ADMIN']), async (req, res) => {
   try {
     const alerts = await Notification.findAll({
       where: {
@@ -137,8 +137,8 @@ app.post('/api/alerts', authenticate, async (req, res) => {
   }
 });
 
-// GET all inspections (Staff/Supervisor/Admin only)
-app.get('/api/inspections', authenticate, authorize(['STAFF', 'SUPERVISOR', 'ADMIN']), async (req, res) => {
+// GET all inspections (Staff/Admin only)
+app.get('/api/inspections', authenticate, authorize(['STAFF', 'ADMIN']), async (req, res) => {
   try {
     const inspections = await Inspection.findAll({
       include: [
@@ -154,8 +154,8 @@ app.get('/api/inspections', authenticate, authorize(['STAFF', 'SUPERVISOR', 'ADM
   }
 });
 
-// POST create manual inspection (Staff/Supervisor/Admin only)
-app.post('/api/inspections', authenticate, authorize(['STAFF', 'SUPERVISOR', 'ADMIN']), async (req, res) => {
+// POST create manual inspection (Staff/Admin only)
+app.post('/api/inspections', authenticate, authorize(['STAFF', 'ADMIN']), async (req, res) => {
   const { consumer_id, reason, assigned_to } = req.body;
 
   if (!consumer_id || !reason) {
@@ -170,8 +170,8 @@ app.post('/api/inspections', authenticate, authorize(['STAFF', 'SUPERVISOR', 'AD
 
     if (assigned_to) {
       const staff = await User.findByPk(assigned_to);
-      if (!staff || !['STAFF', 'SUPERVISOR'].includes(staff.role)) {
-        return res.status(400).json({ error: 'Inspection can only be assigned to Staff or Supervisor roles' });
+      if (!staff || staff.role !== 'STAFF') {
+        return res.status(400).json({ error: 'Inspection can only be assigned to Staff role' });
       }
     }
 
@@ -189,8 +189,8 @@ app.post('/api/inspections', authenticate, authorize(['STAFF', 'SUPERVISOR', 'AD
   }
 });
 
-// PUT update inspection assignment or status (Staff/Supervisor/Admin only)
-app.put('/api/inspections/:id', authenticate, authorize(['STAFF', 'SUPERVISOR', 'ADMIN']), async (req, res) => {
+// PUT update inspection assignment or status (Staff/Admin only)
+app.put('/api/inspections/:id', authenticate, authorize(['STAFF', 'ADMIN']), async (req, res) => {
   const { id } = req.params;
   const { status, assigned_to } = req.body;
 
@@ -212,8 +212,8 @@ app.put('/api/inspections/:id', authenticate, authorize(['STAFF', 'SUPERVISOR', 
         inspection.assigned_to = null;
       } else {
         const staff = await User.findByPk(assigned_to);
-        if (!staff || !['STAFF', 'SUPERVISOR'].includes(staff.role)) {
-          return res.status(400).json({ error: 'Inspection can only be assigned to Staff or Supervisor roles' });
+        if (!staff || staff.role !== 'STAFF') {
+          return res.status(400).json({ error: 'Inspection can only be assigned to Staff role' });
         }
         inspection.assigned_to = assigned_to;
       }

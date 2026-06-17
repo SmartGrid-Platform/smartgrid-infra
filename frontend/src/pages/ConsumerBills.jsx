@@ -15,7 +15,9 @@ const ConsumerBills = () => {
     const fetchBills = async () => {
       try {
         const billsRes = await billingApi.get('/consumer/bills');
-        setBills(billsRes.data || []);
+        const data = billsRes.data;
+        const billsData = Array.isArray(data) ? data : (data?.bills || []);
+        setBills(billsData);
       } catch (error) {
         console.error('Error fetching bills:', error);
       } finally {
@@ -52,7 +54,7 @@ const ConsumerBills = () => {
       <Card>
         <CardContent>
           {bills.length === 0 ? (
-            <Typography sx={{ color: '#B0BEC5' }}>No bills found.</Typography>
+            <Typography sx={{ color: '#B0BEC5' }}>No Bills Available</Typography>
           ) : (
             <TableContainer component={Paper} sx={{ backgroundColor: 'transparent', boxShadow: 'none' }}>
               <Table>
