@@ -50,9 +50,12 @@ router.post('/chat', authenticate, async (req, res) => {
   config.messages = config.messages || [];
   config.messages.push({ role: 'user', content: message });
   
-  // Bound context size to last 14 messages (7 turns) to prevent token bloat
-  if (config.messages.length > 14) {
-    config.messages = config.messages.slice(-14);
+  // Bound context size to prevent token bloat and ensure it always starts with a user message
+  if (config.messages.length > 15) {
+    config.messages = config.messages.slice(-15);
+  }
+  while (config.messages.length > 0 && config.messages[0].role !== 'user') {
+    config.messages.shift();
   }
   
   try {
