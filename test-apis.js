@@ -1,5 +1,5 @@
-const jwt = require('./services/auth-service/node_modules/jsonwebtoken');
-const axios = require('./services/auth-service/node_modules/axios');
+const jwt = require('./services/ai-assistant-service/node_modules/jsonwebtoken');
+const axios = require('./services/ai-assistant-service/node_modules/axios');
 const { loadSecrets } = require('./shared/database/secrets-manager');
 
 const JWT_SECRET = 'smartgrid_secret'; // Default or from env
