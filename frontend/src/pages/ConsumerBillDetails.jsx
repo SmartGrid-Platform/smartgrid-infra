@@ -16,7 +16,7 @@ const ConsumerBillDetails = () => {
   useEffect(() => {
     const fetchBill = async () => {
       try {
-        const res = await billingApi.get(`/consumer/bills/${id}`);
+        const res = await billingApi.get(`/bills/my-bills/${id}`);
         setBill(res.data);
       } catch (err) {
         console.error(err);
@@ -30,13 +30,30 @@ const ConsumerBillDetails = () => {
 
   const handleDownload = async () => {
     try {
-      const res = await billingApi.get(`/consumer/bills/${id}/download`);
-      if (res.data.downloadUrl) {
-        window.open(res.data.downloadUrl, '_blank');
+      const response = await billingApi.get(`/bills/my-bills/${id}/download`, { responseType: 'blob' });
+      
+      // Perform Frontend Validation on PDF content
+      if (response.data.type !== 'application/pdf') {
+        const text = await response.data.text();
+        let errMsg = 'Failed to generate bill PDF.';
+        try {
+          const errObj = JSON.parse(text);
+          errMsg = errObj.error || errMsg;
+        } catch (e) {}
+        alert(errMsg);
+        return;
       }
+
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', bill?.pdf_path || `bill_${id}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
     } catch (error) {
       console.error(error);
-      alert('Download failed');
+      alert('Failed to generate bill PDF.');
     }
   };
 

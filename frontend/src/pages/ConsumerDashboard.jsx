@@ -202,17 +202,29 @@ const ConsumerDashboard = () => {
   const handleBillDownload = async (billId, fileName) => {
     try {
       const response = await billingApi.get(`/bills/${billId}/download`, { responseType: 'blob' });
-      // Create download link
-      const url = window.URL.createObjectURL(new Blob([response.data]));
+      
+      // Perform Frontend Validation on PDF content
+      if (response.data.type !== 'application/pdf') {
+        const text = await response.data.text();
+        let errMsg = 'Failed to generate bill PDF.';
+        try {
+          const errObj = JSON.parse(text);
+          errMsg = errObj.error || errMsg;
+        } catch (e) {}
+        alert(errMsg);
+        return;
+      }
+
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', fileName);
+      link.setAttribute('download', fileName || `bill_${billId}.pdf`);
       document.body.appendChild(link);
       link.click();
       link.remove();
     } catch (error) {
       console.error('Error downloading bill:', error);
-      alert('Could not download bill file.');
+      alert('Failed to generate bill PDF.');
     }
   };
 

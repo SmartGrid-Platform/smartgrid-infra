@@ -58,6 +58,20 @@ async function run() {
   } catch (err) {
     console.error('GET /api/consumer/bills Error:', err.response?.status, err.response?.data || err.message);
   }
+
+  try {
+    const myBillsRes = await axios.get('http://localhost:3004/api/bills/my-bills', { headers });
+    console.log('GET /api/bills/my-bills Success:', myBillsRes.data);
+  } catch (err) {
+    console.error('GET /api/bills/my-bills Error:', err.response?.status, err.response?.data || err.message);
+  }
+
+  try {
+    const downloadRes = await axios.get('http://localhost:3004/api/bills/my-bills/1/download', { headers, responseType: 'arraybuffer' });
+    console.log('GET /api/bills/my-bills/1/download Success:', downloadRes.status, 'Content-Type:', downloadRes.headers['content-type'], 'Buffer Length:', downloadRes.data.byteLength);
+  } catch (err) {
+    console.error('GET /api/bills/my-bills/1/download Error:', err.response?.status, err.response?.data ? Buffer.from(err.response.data).toString() : err.message);
+  }
 }
 
 run().catch(console.error);

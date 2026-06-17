@@ -268,6 +268,9 @@ app.get('/api/bills/consumer/:consumerId', authenticate, async (req, res) => {
       where: { consumer_id: consumerId },
       order: [['created_at', 'DESC']]
     });
+
+    console.log(`[DEBUG Dashboard API] Logged In User ID: ${req.user.id}, Consumer ID: ${consumerId}, Bills Retrieved: ${JSON.stringify(bills.map(b => b.id))}, Bills Count: ${bills.length}`);
+
     return res.status(200).json(bills);
   } catch (error) {
     console.error('Fetch Consumer Bills Error:', error);
@@ -393,10 +396,112 @@ app.post('/api/bills/generate', authenticate, authorize(['STAFF', 'ADMIN']), asy
     const billResult = await invokeLambda(
       process.env.LAMBDA_BILL_GENERATOR,
       lambdaPayload,
-      (payload) => ({ 
-        amount: parseFloat(payload.units) * parseFloat(payload.rate) + parseFloat(payload.fixedCharge || 0), 
-        s3_key: `fallback_bill_${Date.now()}.pdf` 
-      })
+      (payload) => {
+        const amount = parseFloat(payload.units) * parseFloat(payload.rate) + parseFloat(payload.fixedCharge || 0);
+        const fileName = `fallback_bill_${Date.now()}.pdf`;
+        try {
+          const PDFDocument = require('pdfkit');
+          const fs = require('fs');
+          const path = require('path');
+          
+          const billsDir = path.join(__dirname, '../../storage/bills');
+          if (!fs.existsSync(billsDir)) {
+            fs.mkdirSync(billsDir, { recursive: true });
+          }
+          const filePath = path.join(billsDir, fileName);
+          const doc = new PDFDocument({ margin: 50, size: 'A4' });
+          const stream = fs.createWriteStream(filePath);
+          doc.pipe(stream);
+          
+          // Header Banner
+          doc.rect(0, 0, 595, 100).fill('#0D253F');
+          doc.fillColor('#FFFFFF');
+          doc.fontSize(22).font('Helvetica-Bold').text('SMARTGRID', 50, 30);
+          doc.fontSize(10).font('Helvetica').text('Utility Management Platform', 50, 60);
+          doc.fontSize(10).text('Date Generated: ' + new Date().toLocaleDateString(), 400, 45, { align: 'right', width: 145 });
+          
+          // Invoice Details Separator
+          doc.fillColor('#0D253F').fontSize(14).font('Helvetica-Bold').text('BILLING STATEMENT', 50, 125);
+          doc.strokeColor('#26C6DA').lineWidth(1.5).moveTo(50, 143).lineTo(545, 143).stroke();
+          
+          // Consumer Details & Billing Summary (2 columns)
+          doc.fillColor('#333333').fontSize(9).font('Helvetica');
+          // Left Col: Consumer Details
+          doc.font('Helvetica-Bold').text('Consumer Details:', 50, 160);
+          doc.font('Helvetica').text(`Name: ${payload.consumerName}`, 50, 180)
+             .text(`Email: ${payload.consumerEmail}`, 50, 195)
+             .text(`Phone: ${payload.consumerPhone}`, 50, 210)
+             .text(`Address: ${payload.consumerAddress}`, 50, 225, { width: 220 });
+
+          // Right Col: Billing info
+          doc.font('Helvetica-Bold').text('Billing Summary:', 320, 160);
+          doc.font('Helvetica').text(`Consumer Number: ${payload.consumerNumber}`, 320, 180)
+             .text(`Meter Number: ${payload.meterNumber}`, 320, 195)
+             .text(`Tariff Plan: ${payload.tariffPlan}`, 320, 210)
+             .text(`Billing Month: ${payload.billingMonth}`, 320, 225);
+
+          // Usage Table Section
+          doc.fillColor('#0D253F').fontSize(11).font('Helvetica-Bold').text('Usage Details', 50, 275);
+          doc.strokeColor('#E0E0E0').lineWidth(1).moveTo(50, 290).lineTo(545, 290).stroke();
+          
+          // Table Header Row
+          doc.fillColor('#555555').fontSize(8.5).font('Helvetica-Bold');
+          doc.text('Previous Reading', 50, 298)
+             .text('Current Reading', 150, 298)
+             .text('Units Consumed', 250, 298)
+             .text('Rate Per Unit', 350, 298)
+             .text('Fixed Charge', 450, 298);
+             
+          doc.strokeColor('#E0E0E0').moveTo(50, 312).lineTo(545, 312).stroke();
+
+          // Table Values Row
+          doc.fillColor('#333333').fontSize(9.5).font('Helvetica');
+          doc.text(`${parseFloat(payload.previousReading || 0).toFixed(2)} kWh`, 50, 322)
+             .text(`${parseFloat(payload.currentReading || 0).toFixed(2)} kWh`, 150, 322)
+             .text(`${parseFloat(payload.units).toFixed(2)} kWh`, 250, 322)
+             .text(`₹${parseFloat(payload.rate).toFixed(2)}`, 350, 322)
+             .text(`₹${parseFloat(payload.fixedCharge || 0).toFixed(2)}`, 450, 322);
+
+          doc.strokeColor('#0D253F').lineWidth(1.5).moveTo(50, 345).lineTo(545, 345).stroke();
+          
+          // Totals Box
+          doc.rect(320, 360, 225, 110).fill('#F5F5F5');
+          doc.fillColor('#333333').fontSize(9.5).font('Helvetica');
+          doc.text('Energy Charge:', 340, 375);
+          doc.text(`₹${(parseFloat(payload.units) * parseFloat(payload.rate)).toFixed(2)}`, 450, 375, { align: 'right', width: 80 });
+          
+          doc.text('Fixed Charge:', 340, 395);
+          doc.text(`₹${parseFloat(payload.fixedCharge || 0).toFixed(2)}`, 450, 395, { align: 'right', width: 80 });
+
+          doc.text('Tax / GST:', 340, 415);
+          doc.text(`₹${parseFloat(payload.tax || 0).toFixed(2)}`, 450, 415, { align: 'right', width: 80 });
+
+          doc.strokeColor('#D7D7D7').lineWidth(1).moveTo(330, 435).lineTo(535, 435).stroke();
+          
+          doc.fillColor('#0D253F').fontSize(11).font('Helvetica-Bold');
+          doc.text('Total Amount:', 340, 445);
+          doc.text(`₹${amount.toFixed(2)}`, 450, 445, { align: 'right', width: 80 });
+
+          // Payment Status Banner
+          doc.rect(50, 375, 120, 32).fill('#E8F5E9');
+          doc.fillColor('#2E7D32').fontSize(12).font('Helvetica-Bold').text('PAID', 93, 385);
+
+          // Footer
+          doc.strokeColor('#E0E0E0').lineWidth(1).moveTo(50, 720).lineTo(545, 720).stroke();
+          doc.fillColor('#777777').fontSize(8).font('Helvetica');
+          doc.text('Generated by SmartGrid Utility Management Platform', 50, 730, { align: 'center', width: 495 });
+          doc.text(`Generation Timestamp: ${new Date().toLocaleString()}`, 50, 742, { align: 'center', width: 495 });
+          
+          doc.end();
+          console.log(`[Local Fallback] Successfully generated local PDF bill: ${filePath}`);
+        } catch (err) {
+          console.error('[Local Fallback] PDF Generation failed:', err);
+        }
+        return {
+          amount,
+          s3_key: fileName
+        };
+      }
     );
     
     const amount = billResult.amount;
@@ -436,6 +541,7 @@ app.post('/api/bills/generate', authenticate, authorize(['STAFF', 'ADMIN']), asy
 });
 
 // GET download bill pre-signed URL
+// GET download bill PDF directly
 app.get('/api/bills/:id/download', authenticate, async (req, res) => {
   const { id } = req.params;
   try {
@@ -450,16 +556,19 @@ app.get('/api/bills/:id/download', authenticate, async (req, res) => {
     }
 
     try {
-      const { getSignedDownloadUrl } = require('../../shared/database/s3-helper');
-      const downloadUrl = await getSignedDownloadUrl(bill.pdf_path);
-      return res.status(200).json({ downloadUrl });
+      const { downloadBill } = require('../../shared/database/s3-helper');
+      await downloadBill(bill.pdf_path, res);
     } catch (err) {
       console.error(err);
-      return res.status(500).json({ error: 'Failed to generate download URL' });
+      if (!res.headersSent) {
+        return res.status(500).json({ error: 'Failed to stream bill file' });
+      }
     }
   } catch (error) {
     console.error('Download Bill Error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    if (!res.headersSent) {
+      return res.status(500).json({ error: 'Internal server error' });
+    }
   }
 });
 
@@ -468,12 +577,12 @@ app.get('/api/bills/local-download/:fileName', async (req, res) => {
   try {
     const { fileName } = req.params;
     const { downloadBill } = require('../../shared/database/s3-helper');
-    // For local fallback we can stream it directly. Since this is just for dev, we can bypass strict auth here, 
-    // or ideally the URL should have a short-lived token. For this demo, we'll stream it.
     await downloadBill(fileName, res);
   } catch (err) {
     console.error('Local download error:', err);
-    return res.status(404).json({ error: 'File not found' });
+    if (!res.headersSent) {
+      return res.status(404).json({ error: 'File not found' });
+    }
   }
 });
 
@@ -496,9 +605,8 @@ app.get('/api/bills/:id', authenticate, async (req, res) => {
   }
 });
 
-// NEW ENDPOINTS AS REQUESTED:
-// GET /api/consumer/bills (Returns bill history for logged in consumer)
-app.get('/api/consumer/bills', authenticate, async (req, res) => {
+// GET /api/bills/my-bills (Returns bill history for logged in consumer)
+app.get('/api/bills/my-bills', authenticate, async (req, res) => {
   try {
     if (req.user.role !== 'CONSUMER') {
       return res.status(403).json({ error: 'Only consumers can access this endpoint' });
@@ -510,6 +618,9 @@ app.get('/api/consumer/bills', authenticate, async (req, res) => {
       where: { consumer_id: consumer.id },
       order: [['billing_month', 'DESC']]
     });
+
+    console.log(`[DEBUG My Bills API] Logged In User ID: ${req.user.id}, Consumer ID: ${consumer.id}, Bills Retrieved: ${JSON.stringify(bills.map(b => b.id))}, Bills Count: ${bills.length}`);
+
     return res.status(200).json(bills);
   } catch (error) {
     console.error('Fetch Consumer Bills Error:', error);
@@ -517,8 +628,8 @@ app.get('/api/consumer/bills', authenticate, async (req, res) => {
   }
 });
 
-// GET /api/consumer/bills/:id (Returns bill details for logged in consumer)
-app.get('/api/consumer/bills/:id', authenticate, async (req, res) => {
+// GET /api/bills/my-bills/:id (Returns bill details for logged in consumer)
+app.get('/api/bills/my-bills/:id', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
     if (req.user.role !== 'CONSUMER') {
@@ -539,8 +650,8 @@ app.get('/api/consumer/bills/:id', authenticate, async (req, res) => {
   }
 });
 
-// GET /api/consumer/bills/:id/download (Generates secure pre-signed S3 URL)
-app.get('/api/consumer/bills/:id/download', authenticate, async (req, res) => {
+// GET /api/bills/my-bills/:id/download (Streams bill PDF directly for logged in consumer)
+app.get('/api/bills/my-bills/:id/download', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
     if (req.user.role !== 'CONSUMER') {
@@ -554,17 +665,58 @@ app.get('/api/consumer/bills/:id/download', authenticate, async (req, res) => {
     });
     if (!bill) return res.status(404).json({ error: 'Bill not found' });
 
-    // Generate Pre-Signed URL using the S3 helper
-    const { getSignedDownloadUrl } = require('../../shared/database/s3-helper');
-    // Using s3_key if available, fallback to pdf_path
+    const { downloadBill } = require('../../shared/database/s3-helper');
     const fileKey = bill.s3_key || bill.pdf_path;
     if (!fileKey) return res.status(404).json({ error: 'Bill PDF not found in records' });
 
-    const downloadUrl = await getSignedDownloadUrl(fileKey);
-    return res.status(200).json({ downloadUrl });
+    await downloadBill(fileKey, res);
   } catch (error) {
     console.error('Download Bill Error:', error);
+    if (!res.headersSent) {
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+});
+
+// Compatibility endpoints
+app.get('/api/consumer/bills', authenticate, async (req, res) => {
+  try {
+    if (req.user.role !== 'CONSUMER') return res.status(403).json({ error: 'Only consumers can access this endpoint' });
+    const consumer = await Consumer.findOne({ where: { user_id: req.user.id } });
+    if (!consumer) return res.status(404).json({ error: 'Consumer profile not found' });
+    const bills = await Bill.findAll({ where: { consumer_id: consumer.id }, order: [['billing_month', 'DESC']] });
+    return res.status(200).json(bills);
+  } catch (error) {
     return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/consumer/bills/:id', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (req.user.role !== 'CONSUMER') return res.status(403).json({ error: 'Only consumers can access this endpoint' });
+    const consumer = await Consumer.findOne({ where: { user_id: req.user.id } });
+    if (!consumer) return res.status(404).json({ error: 'Consumer profile not found' });
+    const bill = await Bill.findOne({ where: { id, consumer_id: consumer.id }, include: [{ model: Consumer, as: 'consumer' }] });
+    if (!bill) return res.status(404).json({ error: 'Bill not found' });
+    return res.status(200).json(bill);
+  } catch (error) {
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/consumer/bills/:id/download', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (req.user.role !== 'CONSUMER') return res.status(403).json({ error: 'Only consumers can access this endpoint' });
+    const consumer = await Consumer.findOne({ where: { user_id: req.user.id } });
+    if (!consumer) return res.status(404).json({ error: 'Consumer profile not found' });
+    const bill = await Bill.findOne({ where: { id, consumer_id: consumer.id } });
+    if (!bill) return res.status(404).json({ error: 'Bill not found' });
+    const { downloadBill } = require('../../shared/database/s3-helper');
+    await downloadBill(bill.s3_key || bill.pdf_path, res);
+  } catch (error) {
+    if (!res.headersSent) return res.status(500).json({ error: 'Internal server error' });
   }
 });
 

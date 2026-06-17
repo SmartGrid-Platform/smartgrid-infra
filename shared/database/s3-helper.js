@@ -59,7 +59,7 @@ async function downloadBill(fileName, res) {
         })
       );
       res.setHeader('Content-Disposition', `attachment; filename=${fileName}`);
-      res.setHeader('Content-Type', 'text/html');
+      res.setHeader('Content-Type', 'application/pdf');
       data.Body.pipe(res);
       return;
     } catch (err) {
@@ -73,7 +73,7 @@ async function downloadBill(fileName, res) {
     throw new Error(`File not found: ${fileName}`);
   }
   res.setHeader('Content-Disposition', `attachment; filename=${fileName}`);
-  res.setHeader('Content-Type', 'text/html');
+  res.setHeader('Content-Type', 'application/pdf');
   fs.createReadStream(filePath).pipe(res);
 }
 
