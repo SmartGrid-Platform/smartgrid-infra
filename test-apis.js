@@ -51,6 +51,13 @@ async function run() {
   } catch (err) {
     console.error('GET /api/bills/consumer/2 Error:', err.response?.status, err.response?.data || err.message);
   }
+
+  try {
+    const consumerBillsRes = await axios.get('http://localhost:3004/api/consumer/bills', { headers });
+    console.log('GET /api/consumer/bills Success:', consumerBillsRes.data);
+  } catch (err) {
+    console.error('GET /api/consumer/bills Error:', err.response?.status, err.response?.data || err.message);
+  }
 }
 
 run().catch(console.error);
