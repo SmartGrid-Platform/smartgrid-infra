@@ -1,0 +1,31 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: smartgrid-db-migrate
+  labels:
+    app: smartgrid-db-migrate
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  template:
+    metadata:
+      labels:
+        app: smartgrid-db-migrate
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: db-migrate
+          image: "{{ .Values.dockerHubUser }}/auth-service:{{ .Values.imageTag }}"
+          workingDir: /app/shared/database
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              npm run migrate && \
+              ADMIN_NAME="Admin" ADMIN_EMAIL="admin@smartgrid.com" ADMIN_PASSWORD="password123" npm run bootstrap
+          envFrom:
+            - configMapRef:
+                name: smartgrid-config
+            - secretRef:
+                name: smartgrid-secrets

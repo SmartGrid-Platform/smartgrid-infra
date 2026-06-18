@@ -8,7 +8,8 @@ resource "aws_vpc" "smartgrid_vpc" {
   enable_dns_hostnames = true
 
   tags = {
-    Name = "smartgrid-${var.environment}-vpc"
+    Name                                                     = "smartgrid-${var.environment}-vpc"
+    "kubernetes.io/cluster/smartgrid-${var.environment}-cluster" = "shared"
   }
 }
 
@@ -30,7 +31,9 @@ resource "aws_subnet" "public_a" {
   map_public_ip_on_launch = true
 
   tags = {
-    Name = "public-subnet-a"
+    Name                                                     = "public-subnet-a"
+    "kubernetes.io/role/elb"                                 = "1"
+    "kubernetes.io/cluster/smartgrid-${var.environment}-cluster" = "shared"
   }
 }
 
@@ -42,7 +45,9 @@ resource "aws_subnet" "public_b" {
   map_public_ip_on_launch = true
 
   tags = {
-    Name = "public-subnet-b"
+    Name                                                     = "public-subnet-b"
+    "kubernetes.io/role/elb"                                 = "1"
+    "kubernetes.io/cluster/smartgrid-${var.environment}-cluster" = "shared"
   }
 }
 
@@ -53,7 +58,9 @@ resource "aws_subnet" "private_app_a" {
   availability_zone = data.aws_availability_zones.available.names[0]
 
   tags = {
-    Name = "private-app-a"
+    Name                                                     = "private-app-a"
+    "kubernetes.io/role/internal-elb"                        = "1"
+    "kubernetes.io/cluster/smartgrid-${var.environment}-cluster" = "shared"
   }
 }
 
@@ -64,7 +71,9 @@ resource "aws_subnet" "private_app_b" {
   availability_zone = data.aws_availability_zones.available.names[1]
 
   tags = {
-    Name = "private-app-b"
+    Name                                                     = "private-app-b"
+    "kubernetes.io/role/internal-elb"                        = "1"
+    "kubernetes.io/cluster/smartgrid-${var.environment}-cluster" = "shared"
   }
 }
 

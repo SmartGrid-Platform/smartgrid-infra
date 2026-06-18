@@ -105,6 +105,11 @@ resource "aws_iam_role_policy_attachment" "backend_role_attach" {
   policy_arn = aws_iam_policy.backend_policy.arn
 }
 
+resource "aws_iam_role_policy_attachment" "backend_ssm_attach" {
+  role       = aws_iam_role.backend_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
 # 4. EC2 Instance Profile
 resource "aws_iam_instance_profile" "backend_profile" {
   name = "smartgrid-${var.environment}-backend-profile-${random_string.suffix.result}"

@@ -73,12 +73,15 @@ resource "aws_security_group" "db_sg" {
   name   = "db-sg"
   vpc_id = aws_vpc.smartgrid_vpc.id
 
-  # Allow MySQL connections from backend microservices
+  # Allow MySQL connections from backend microservices and EKS pods
   ingress {
     from_port       = 3306
     to_port         = 3306
     protocol        = "tcp"
-    security_groups = [aws_security_group.backend_sg.id]
+    security_groups = [
+      aws_security_group.backend_sg.id,
+      aws_eks_cluster.eks.vpc_config[0].cluster_security_group_id
+    ]
   }
 
   egress {

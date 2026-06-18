@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: smartgrid-config
+  labels:
+    app.kubernetes.io/name: smartgrid
+data:
+  NODE_ENV: "production"
+  DB_HOST: {{ .Values.database.host | quote }}
+  DB_NAME: {{ .Values.database.name | quote }}
+  DB_USER: {{ .Values.database.user | quote }}
+  DB_PORT: "3306"
+  AWS_REGION: {{ .Values.awsRegion | quote }}
