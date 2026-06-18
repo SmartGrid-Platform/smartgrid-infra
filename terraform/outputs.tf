@@ -23,4 +23,10 @@ output "ecr_registry_url" {
   description = "The URL of the AWS ECR registry"
 }
 
+output "rds_endpoint" {
+  value       = module.smartgrid_core.rds_endpoint
+  description = "The connection endpoint for the RDS MySQL instance"
+}
+
+
 
