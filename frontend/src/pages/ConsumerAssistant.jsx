@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Box, Card, CardContent, Typography, TextField, IconButton, Paper, CircularProgress, Button, Grid } from '@mui/material';
-import { Send as SendIcon, SmartToy as BotIcon, Person as UserIcon } from '@mui/icons-material';
+import { Send as SendIcon, SmartToy as BotIcon, Person as UserIcon, AttachFile as AttachFileIcon } from '@mui/icons-material';
 import { assistantApi } from '../utils/api';
 
 const suggestedPrompts = [
+  "Analyze My Bill",
   "Explain my latest bill",
   "How much balance do I have?",
   "When should I recharge?",
@@ -17,6 +18,7 @@ const ConsumerAssistant = () => {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [sessionId, setSessionId] = useState('');
+  const [selectedFile, setSelectedFile] = useState('');
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -52,13 +54,71 @@ const ConsumerAssistant = () => {
     }
   };
 
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    if (file.size > 10 * 1024 * 1024) {
+      alert("File size exceeds 10MB limit.");
+      return;
+    }
+
+    setSelectedFile(file.name);
+
+    const userMsg = { role: 'user', content: `[Attached PDF: ${file.name}] Please analyze this bill.` };
+    setMessages((prev) => [...prev, userMsg]);
+    setLoading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('billPdf', file);
+      if (sessionId) formData.append('sessionId', sessionId);
+
+      const res = await assistantApi.post('/assistant/upload-bill', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      
+      if (res.data.sessionId) setSessionId(res.data.sessionId);
+      setMessages((prev) => [...prev, { role: 'assistant', content: res.data.reply }]);
+    } catch (error) {
+      console.error('Upload error:', error);
+      setMessages((prev) => [...prev, { role: 'assistant', content: 'Sorry, there was an error processing your PDF.' }]);
+    } finally {
+      setLoading(false);
+      event.target.value = ''; // Reset input
+    }
+  };
+
   return (
     <Box sx={{ maxWidth: 800, mx: 'auto', p: 2 }}>
       <Typography variant="h5" sx={{ mb: 2, fontFamily: 'Outfit', fontWeight: 700, color: '#26C6DA' }}>
         SmartGrid AI Assistant
       </Typography>
+
+      <Box sx={{ mb: 2, p: 2, backgroundColor: '#102733', borderRadius: 2, border: '1px dashed rgba(0, 183, 194, 0.5)' }}>
+        <Button 
+          variant="contained" 
+          component="label" 
+          disabled={loading} 
+          startIcon={<AttachFileIcon />} 
+          sx={{ mr: 2, backgroundColor: '#00B7C2', color: '#102733', '&:hover': { backgroundColor: '#26C6DA' }, fontWeight: 'bold' }}
+        >
+          Upload Bill PDF
+          <input type="file" hidden accept="application/pdf" onChange={handleFileUpload} />
+        </Button>
+        {selectedFile && (
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="caption" sx={{ color: '#B0BEC5', display: 'block' }}>
+              Selected File:
+            </Typography>
+            <Typography variant="body2" sx={{ color: '#fff', fontWeight: 'bold' }}>
+              {selectedFile}
+            </Typography>
+          </Box>
+        )}
+      </Box>
       
-      <Card sx={{ height: '70vh', display: 'flex', flexDirection: 'column' }}>
+      <Card sx={{ height: '60vh', display: 'flex', flexDirection: 'column' }}>
         <CardContent sx={{ flex: 1, overflowY: 'auto', p: 2, backgroundColor: '#0A1929' }}>
           {messages.map((m, i) => (
             <Box key={i} sx={{ display: 'flex', mb: 2, justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>

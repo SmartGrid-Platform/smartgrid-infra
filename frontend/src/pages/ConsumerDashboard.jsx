@@ -204,7 +204,7 @@ const ConsumerDashboard = () => {
       const response = await billingApi.get(`/bills/${billId}/download`, { responseType: 'blob' });
       
       // Perform Frontend Validation on PDF content
-      if (response.data.type !== 'application/pdf') {
+      if (response.headers['content-type'] !== 'application/pdf') {
         const text = await response.data.text();
         let errMsg = 'Failed to generate bill PDF.';
         try {
@@ -382,55 +382,8 @@ const ConsumerDashboard = () => {
         </Card>
       </Grid>
 
-      {/* 3. Bills Table & Recharge logs */}
-      <Grid item xs={12} md={7}>
-        <Card sx={{ height: '100%' }}>
-          <CardContent>
-            <Typography variant="h6" sx={{ mb: 2, fontFamily: 'Outfit', fontWeight: 700, color: '#26C6DA' }}>
-              Billing Statements History
-            </Typography>
-            {bills.length === 0 ? (
-              <Typography variant="body2" sx={{ color: '#B0BEC5', py: 2 }}>No billing history available.</Typography>
-            ) : (
-              <TableContainer component={Paper} sx={{ backgroundColor: 'transparent', boxShadow: 'none' }}>
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Month</TableCell>
-                      <TableCell>Units Used</TableCell>
-                      <TableCell>Amount</TableCell>
-                      <TableCell>Status</TableCell>
-                      <TableCell align="right">Download</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {(Array.isArray(bills) ? bills : []).map((b) => (
-                      <TableRow key={b?.id}>
-                        <TableCell><strong>{b?.billing_month}</strong></TableCell>
-                        <TableCell>{parseFloat(b?.units_used ?? 0).toFixed(2)} kWh</TableCell>
-                        <TableCell>₹{parseFloat(b?.amount ?? 0).toFixed(2)}</TableCell>
-                        <TableCell>
-                          <Chip label={b?.status || 'PENDING'} color="success" size="small" sx={{ fontWeight: 'bold' }} />
-                        </TableCell>
-                        <TableCell align="right">
-                          <IconButton
-                            color="secondary"
-                            onClick={() => handleBillDownload(b?.id, b?.pdf_path)}
-                          >
-                            <DownloadIcon />
-                          </IconButton>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
-          </CardContent>
-        </Card>
-      </Grid>
-
-      <Grid item xs={12} md={5}>
+      {/* 3. Recharge logs */}
+      <Grid item xs={12}>
         <Card sx={{ height: '100%' }}>
           <CardContent>
             <Typography variant="h6" sx={{ mb: 2, fontFamily: 'Outfit', fontWeight: 700, color: '#26C6DA' }}>

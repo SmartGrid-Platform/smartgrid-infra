@@ -33,7 +33,8 @@ When answering, strictly adhere to the following rules:
    - Format numbers appropriately (e.g. ₹15,000 instead of $15,000).
 8. Explain technical concepts in simple language.
 9. Provide actionable energy recommendations and billing insights whenever useful.
-10. Support detailed analytical conversations, follow-up questions, and utility operations topics.`;
+10. Support detailed analytical conversations, follow-up questions, and utility operations topics.
+11. UPLOADED BILL ANALYSIS: If the user conversation contains an "[Attached PDF Context]" block, prioritize using that extracted text to answer specific questions about that particular bill, its charges, and summary. Distinguish between their historical system data and the specific uploaded document.`;
 
 const runConverseAgent = async (messages, consumerId, authHeader, user) => {
   const client = bedrockProvider.client;

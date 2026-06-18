@@ -14,7 +14,15 @@ const ConsumerBills = () => {
   useEffect(() => {
     const fetchBills = async () => {
       try {
-        const billsRes = await billingApi.get('/bills/my-bills');
+        const profRes = await consumerApi.get('/consumers/me');
+        const consumerData = profRes.data;
+        if (!consumerData || !consumerData.id) {
+          setLoading(false);
+          return;
+        }
+        setConsumerId(consumerData.id);
+        
+        const billsRes = await billingApi.get(`/bills/consumer/${consumerData.id}`);
         const data = billsRes.data;
         const billsData = Array.isArray(data) ? data : (data?.bills || []);
         setBills(billsData);
@@ -32,7 +40,7 @@ const ConsumerBills = () => {
       const response = await billingApi.get(`/bills/my-bills/${billId}/download`, { responseType: 'blob' });
       
       // Perform Frontend Validation on PDF content
-      if (response.data.type !== 'application/pdf') {
+      if (response.headers['content-type'] !== 'application/pdf') {
         const text = await response.data.text();
         let errMsg = 'Failed to generate bill PDF.';
         try {

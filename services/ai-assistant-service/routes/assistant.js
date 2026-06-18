@@ -2,8 +2,18 @@ const express = require('express');
 const { authenticate } = require('../middleware/auth');
 const { createAgent } = require('../services/agent');
 const bedrockProvider = require('../services/bedrockProvider');
+const multer = require('multer');
+const pdfParse = require('pdf-parse');
+const { TextractClient, DetectDocumentTextCommand } = require('@aws-sdk/client-textract');
 
 const router = express.Router();
+
+const textractClient = new TextractClient({ region: process.env.AWS_REGION || 'ap-south-1' });
+
+const upload = multer({
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  storage: multer.memoryStorage()
+});
 
 // Track sessions in memory for simple demonstration (in production use Redis/DB)
 const userSessions = new Map();
@@ -146,6 +156,109 @@ router.post('/explain-bill', authenticate, async (req, res) => {
   } catch (error) {
     console.error('[EXPLAIN] Explain Bill Error:', error.stack || error);
     return res.status(500).json({ error: 'Failed to generate bill explanation' });
+  }
+});
+
+router.post('/upload-bill', authenticate, upload.single('billPdf'), async (req, res) => {
+  console.log('[UPLOAD] Received bill upload request');
+  const file = req.file;
+  const sessionId = req.body.sessionId;
+  const consumerId = req.user?.consumerId || null;
+  const authHeader = req.headers.authorization;
+
+  if (!file) {
+    return res.status(400).json({ error: 'No PDF file uploaded' });
+  }
+
+  try {
+    let extractedText = '';
+    
+    // 1. Try pdf-parse as primary method
+    try {
+      const data = await pdfParse(file.buffer);
+      extractedText = data.text.trim();
+      console.log(`[UPLOAD] pdf-parse extracted ${extractedText.length} characters.`);
+    } catch (parseErr) {
+      console.warn('[UPLOAD] pdf-parse failed:', parseErr.message);
+    }
+
+    // 2. Fallback to Textract if pdf-parse text is too short (e.g. < 50 chars means likely scanned)
+    if (extractedText.length < 50) {
+      console.log('[UPLOAD] pdf-parse output insufficient. Falling back to Amazon Textract...');
+      if (file.size > 5 * 1024 * 1024) {
+         console.warn('[UPLOAD] File is larger than 5MB; synchronous Textract may fail.');
+      }
+      try {
+        const command = new DetectDocumentTextCommand({
+          Document: { Bytes: file.buffer }
+        });
+        const textractResponse = await textractClient.send(command);
+        extractedText = textractResponse.Blocks
+          .filter(block => block.BlockType === 'LINE')
+          .map(block => block.Text)
+          .join('\n');
+        console.log(`[UPLOAD] Textract extracted ${extractedText.length} characters.`);
+      } catch (textractErr) {
+        console.error('[UPLOAD] Textract fallback failed:', textractErr.message);
+        throw new Error('Failed to extract text from PDF using both primary and fallback methods. ' + textractErr.message);
+      }
+    }
+
+    if (!extractedText || extractedText.length === 0) {
+      return res.status(400).json({ error: 'Could not extract any text from the uploaded PDF.' });
+    }
+
+    // 3. Inject context into the session
+    const sId = sessionId || `session_${req.user.id}_${Date.now()}`;
+    if (!userSessions.has(sId)) {
+      userSessions.set(sId, {
+        configurable: { thread_id: sId },
+        consumerId,
+        authHeader,
+        messages: []
+      });
+    }
+    const config = userSessions.get(sId);
+    config.consumerId = consumerId;
+    config.authHeader = authHeader;
+    
+    // Add context to messages history
+    config.messages = config.messages || [];
+    
+    const analyzePrompt = `[Attached PDF Context]:\n${extractedText}\n\nPlease analyze this bill and provide a structured summary (Name, Period, Units, Amount, Due Date, Status) followed by 3 short bullet points of smart insights regarding usage or cost.`;
+    
+    config.messages.push({ role: 'user', content: analyzePrompt });
+
+    // 4. Invoke agent
+    console.log(`[UPLOAD] Invoking agent to analyze uploaded bill for session ${sId}`);
+    const agent = await createAgent();
+    const result = await agent.invoke({
+      messages: config.messages,
+      consumerId: config.consumerId,
+      authHeader: config.authHeader,
+      user: {
+        id: req.user.id,
+        name: req.user.name,
+        email: req.user.email,
+        role: req.user.role,
+        consumerId: consumerId,
+        consumerNumber: req.user.consumerNumber || null
+      }
+    }, {
+      configurable: { thread_id: sId }
+    });
+
+    const aiMessage = result.messages[result.messages.length - 1];
+    config.messages.push({ role: 'assistant', content: aiMessage.content });
+
+    return res.status(200).json({
+      reply: aiMessage.content,
+      sessionId: sId
+    });
+
+  } catch (error) {
+    console.error('[UPLOAD] Error processing PDF:', error.stack || error);
+    return res.status(500).json({ error: error.message || 'Failed to process uploaded bill' });
   }
 });
 
