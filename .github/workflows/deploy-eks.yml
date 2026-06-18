@@ -147,7 +147,7 @@ jobs:
             --set ecrRegistryUrl="$ECR_REGISTRY" \
             --set imageTag="${{ github.sha }}" \
             --set database.host="$DB_HOST" \
-            --set database.name="smartgrid_dev" \
-            --set database.user="admin" \
-            --set database.password="password123" \
+            --set database.name="smartgrid" \
+            --set database.user="smartgrid_user" \
+            --set database.password="password" \
             --set jwtSecret="a2b53cdd87431e5630283c448f72ee7b2c91b5da8d1234c9fb66b3f7efc4901f"

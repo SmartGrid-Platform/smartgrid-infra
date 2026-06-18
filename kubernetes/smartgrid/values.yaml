@@ -9,9 +9,9 @@ ecrRegistryUrl: "123456789012.dkr.ecr.ap-south-1.amazonaws.com" # AWS Account EC
 # Database credentials (to be securely passed during helm install or retrieved via AWS Secrets Manager)
 database:
   host: "smartgrid-db.c123456789.ap-south-1.rds.amazonaws.com"
-  name: "smartgrid_dev"
-  user: "admin"
-  password: "password123" # In production, pull from AWS Secrets Manager or inject securely
+  name: "smartgrid"
+  user: "smartgrid_user"
+  password: "password" # In production, pull from AWS Secrets Manager or inject securely
 
 # JWT and external integrations
 jwtSecret: "a2b53cdd87431e5630283c448f72ee7b2c91b5da8d1234c9fb66b3f7efc4901f"
