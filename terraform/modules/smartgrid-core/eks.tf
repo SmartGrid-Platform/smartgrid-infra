@@ -138,3 +138,25 @@ resource "aws_iam_role_policy_attachment" "eks_pod_policy_attach" {
   role       = aws_iam_role.eks_pod_role.name
   policy_arn = aws_iam_policy.backend_policy.arn
 }
+
+#################################################
+# ECR Container Registries
+#################################################
+
+data "aws_caller_identity" "current" {}
+
+resource "aws_ecr_repository" "smartgrid_repos" {
+  for_each             = toset(["auth-service", "consumer-service", "meter-service", "billing-service", "alert-service", "ai-assistant-service", "frontend"])
+  name                 = "smartgrid-${var.environment}-${each.key}"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  tags = {
+    Environment = var.environment
+    Project     = "smartgrid"
+  }
+}
+

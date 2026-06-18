@@ -18,3 +18,9 @@ output "eks_cluster_endpoint" {
   description = "The EKS cluster endpoint"
 }
 
+output "ecr_registry_url" {
+  value       = module.smartgrid_core.ecr_registry_url
+  description = "The URL of the AWS ECR registry"
+}
+
+

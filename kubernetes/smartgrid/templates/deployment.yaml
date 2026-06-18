@@ -18,7 +18,7 @@ spec:
       serviceAccountName: smartgrid-sa
       containers:
         - name: {{ $serviceName }}
-          image: "{{ $.Values.dockerHubUser }}/{{ $service.image }}:{{ $.Values.imageTag }}"
+          image: "{{ $.Values.ecrRegistryUrl }}/smartgrid-{{ $.Values.environment }}-{{ $service.image }}:{{ $.Values.imageTag }}"
           imagePullPolicy: Always
           ports:
             - containerPort: {{ $service.port }}

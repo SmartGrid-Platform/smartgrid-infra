@@ -47,5 +47,11 @@ output "eks_pod_role_arn" {
   description = "The ARN of the EKS Pod IAM role"
 }
 
+output "ecr_registry_url" {
+  value       = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com"
+  description = "The URL of the AWS ECR registry"
+}
+
+
 
 

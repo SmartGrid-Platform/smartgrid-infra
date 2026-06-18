@@ -4,7 +4,7 @@
 environment: dev
 awsRegion: ap-south-1
 imageTag: latest
-dockerHubUser: "likhi161" # Replace with your Docker Hub username
+ecrRegistryUrl: "123456789012.dkr.ecr.ap-south-1.amazonaws.com" # AWS Account ECR Registry URL
 
 # Database credentials (to be securely passed during helm install or retrieved via AWS Secrets Manager)
 database:

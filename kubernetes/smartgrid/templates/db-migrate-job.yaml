@@ -17,7 +17,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: db-migrate
-          image: "{{ .Values.dockerHubUser }}/auth-service:{{ .Values.imageTag }}"
+          image: "{{ .Values.ecrRegistryUrl }}/smartgrid-{{ .Values.environment }}-auth-service:{{ .Values.imageTag }}"
           workingDir: /app/shared/database
           command: ["/bin/sh", "-c"]
           args:
