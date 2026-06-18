@@ -82,7 +82,8 @@ const ConsumerAssistant = () => {
       setMessages((prev) => [...prev, { role: 'assistant', content: res.data.reply }]);
     } catch (error) {
       console.error('Upload error:', error);
-      setMessages((prev) => [...prev, { role: 'assistant', content: 'Sorry, there was an error processing your PDF.' }]);
+      const errMsg = error.response?.data?.error || 'Sorry, there was an error processing your PDF.';
+      setMessages((prev) => [...prev, { role: 'assistant', content: errMsg }]);
     } finally {
       setLoading(false);
       event.target.value = ''; // Reset input

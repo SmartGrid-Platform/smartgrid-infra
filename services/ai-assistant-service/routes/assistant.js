@@ -170,12 +170,16 @@ router.post('/upload-bill', authenticate, upload.single('billPdf'), async (req, 
     return res.status(400).json({ error: 'No PDF file uploaded' });
   }
 
+  console.log("Received file:", file);
+
   try {
     let extractedText = '';
     
     // 1. Try pdf-parse as primary method
     try {
       const data = await pdfParse(file.buffer);
+      console.log("Pages:", data.numpages);
+      console.log("Text Length:", data.text.length);
       extractedText = data.text.trim();
       console.log(`[UPLOAD] pdf-parse extracted ${extractedText.length} characters.`);
     } catch (parseErr) {
@@ -207,6 +211,8 @@ router.post('/upload-bill', authenticate, upload.single('billPdf'), async (req, 
     if (!extractedText || extractedText.length === 0) {
       return res.status(400).json({ error: 'Could not extract any text from the uploaded PDF.' });
     }
+
+    console.log("Extracted text:", extractedText.substring(0, 500));
 
     // 3. Inject context into the session
     const sId = sessionId || `session_${req.user.id}_${Date.now()}`;

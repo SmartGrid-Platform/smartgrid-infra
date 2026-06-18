@@ -85,6 +85,15 @@ resource "aws_iam_policy" "backend_policy" {
           "bedrock:InvokeModel"
         ]
         Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "textract:DetectDocumentText",
+          "textract:StartDocumentTextDetection",
+          "textract:GetDocumentTextDetection"
+        ]
+        Resource = "*"
       }
     ]
   })
