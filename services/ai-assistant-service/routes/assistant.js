@@ -166,11 +166,13 @@ router.post('/upload-bill', authenticate, upload.single('billPdf'), async (req, 
   const consumerId = req.user?.consumerId || null;
   const authHeader = req.headers.authorization;
 
-  if (!file) {
-    return res.status(400).json({ error: 'No PDF file uploaded' });
-  }
+  console.log("File received:", file?.originalname);
+  console.log("File size:", file?.size);
+  console.log("Buffer length:", file?.buffer?.length);
 
-  console.log("Received file:", file);
+  if (!file || !file.buffer) {
+    return res.status(400).json({ error: 'No PDF file uploaded or file buffer is empty' });
+  }
 
   try {
     let extractedText = '';
@@ -181,7 +183,7 @@ router.post('/upload-bill', authenticate, upload.single('billPdf'), async (req, 
       console.log("Pages:", data.numpages);
       console.log("Text Length:", data.text.length);
       extractedText = data.text.trim();
-      console.log(`[UPLOAD] pdf-parse extracted ${extractedText.length} characters.`);
+      console.log("Extracted text preview:", extractedText.substring(0, 500));
     } catch (parseErr) {
       console.warn('[UPLOAD] pdf-parse failed:', parseErr.message);
     }
@@ -209,10 +211,11 @@ router.post('/upload-bill', authenticate, upload.single('billPdf'), async (req, 
     }
 
     if (!extractedText || extractedText.length === 0) {
-      return res.status(400).json({ error: 'Could not extract any text from the uploaded PDF.' });
+      return res.status(400).json({ error: 'PDF uploaded but no text could be extracted.' });
     }
 
-    console.log("Extracted text:", extractedText.substring(0, 500));
+    console.log("Sending extracted bill text to Bedrock");
+    console.log(extractedText.substring(0, 1000));
 
     // 3. Inject context into the session
     const sId = sessionId || `session_${req.user.id}_${Date.now()}`;
@@ -237,34 +240,39 @@ router.post('/upload-bill', authenticate, upload.single('billPdf'), async (req, 
 
     // 4. Invoke agent
     console.log(`[UPLOAD] Invoking agent to analyze uploaded bill for session ${sId}`);
-    const agent = await createAgent();
-    const result = await agent.invoke({
-      messages: config.messages,
-      consumerId: config.consumerId,
-      authHeader: config.authHeader,
-      user: {
-        id: req.user.id,
-        name: req.user.name,
-        email: req.user.email,
-        role: req.user.role,
-        consumerId: consumerId,
-        consumerNumber: req.user.consumerNumber || null
-      }
-    }, {
-      configurable: { thread_id: sId }
-    });
+    try {
+      const agent = await createAgent();
+      const result = await agent.invoke({
+        messages: config.messages,
+        consumerId: config.consumerId,
+        authHeader: config.authHeader,
+        user: {
+          id: req.user.id,
+          name: req.user.name,
+          email: req.user.email,
+          role: req.user.role,
+          consumerId: consumerId,
+          consumerNumber: req.user.consumerNumber || null
+        }
+      }, {
+        configurable: { thread_id: sId }
+      });
 
-    const aiMessage = result.messages[result.messages.length - 1];
-    config.messages.push({ role: 'assistant', content: aiMessage.content });
+      const aiMessage = result.messages[result.messages.length - 1];
+      config.messages.push({ role: 'assistant', content: aiMessage.content });
 
-    return res.status(200).json({
-      reply: aiMessage.content,
-      sessionId: sId
-    });
+      return res.status(200).json({
+        reply: aiMessage.content,
+        sessionId: sId
+      });
+    } catch (bedrockError) {
+      console.error("Bedrock Error:", bedrockError);
+      return res.status(500).json({ error: 'Bedrock API call failed or permission denied while invoking Bedrock.' });
+    }
 
   } catch (error) {
     console.error('[UPLOAD] Error processing PDF:', error.stack || error);
-    return res.status(500).json({ error: error.message || 'Failed to process uploaded bill' });
+    return res.status(500).json({ error: error.message || 'Sorry, I encountered an error. Please try again later.' });
   }
 });
 
