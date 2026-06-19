@@ -24,13 +24,13 @@ module "lambda_unit_calculator" {
   source  = "terraform-aws-modules/lambda/aws"
   version = "~> 7.0"
 
-  function_name = "smartgrid-${var.environment}-unit-calculator-${random_string.suffix.result}"
-  description   = "Calculates units consumed from readings"
-  handler       = "index.handler"
-  runtime       = "nodejs18.x"
-
-  source_path = "${path.root}/../lambdas/unit_calculator"
-  publish     = true
+  function_name          = "smartgrid-${var.environment}-unit-calculator-${random_string.suffix.result}"
+  description            = "Calculates units consumed from readings"
+  handler                = "index.handler"
+  runtime                = "nodejs18.x"
+  local_existing_package = "${path.root}/../lambdas/zips/unit_calculator.zip"
+  create_package         = false
+  publish                = true
 
   allowed_triggers = {
     AllowExecutionFromAPIGateway = {
@@ -44,13 +44,13 @@ module "lambda_bill_generator" {
   source  = "terraform-aws-modules/lambda/aws"
   version = "~> 7.0"
 
-  function_name = "smartgrid-${var.environment}-bill-generator-${random_string.suffix.result}"
-  description   = "Calculates billing amount based on units and rate"
-  handler       = "index.handler"
-  runtime       = "nodejs18.x"
-
-  source_path = "${path.root}/../lambdas/bill_generator"
-  publish     = true
+  function_name          = "smartgrid-${var.environment}-bill-generator-${random_string.suffix.result}"
+  description            = "Calculates billing amount based on units and rate"
+  handler                = "index.handler"
+  runtime                = "nodejs18.x"
+  local_existing_package = "${path.root}/../lambdas/zips/bill_generator.zip"
+  create_package         = false
+  publish                = true
 
   environment_variables = {
     S3_BUCKET_NAME = aws_s3_bucket.bills_bucket.id
@@ -75,13 +75,13 @@ module "lambda_tariff_engine" {
   source  = "terraform-aws-modules/lambda/aws"
   version = "~> 7.0"
 
-  function_name = "smartgrid-${var.environment}-tariff-engine-${random_string.suffix.result}"
-  description   = "Resolves active tariff rate"
-  handler       = "index.handler"
-  runtime       = "nodejs18.x"
-
-  source_path = "${path.root}/../lambdas/tariff_engine"
-  publish     = true
+  function_name          = "smartgrid-${var.environment}-tariff-engine-${random_string.suffix.result}"
+  description            = "Resolves active tariff rate"
+  handler                = "index.handler"
+  runtime                = "nodejs18.x"
+  local_existing_package = "${path.root}/../lambdas/zips/tariff_engine.zip"
+  create_package         = false
+  publish                = true
 }
 
 resource "aws_sns_topic_subscription" "low_balance_email" {
