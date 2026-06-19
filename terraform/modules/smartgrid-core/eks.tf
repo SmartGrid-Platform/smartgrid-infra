@@ -95,7 +95,14 @@ resource "aws_eks_node_group" "nodes" {
   depends_on = [
     aws_iam_role_policy_attachment.eks_node_policy,
     aws_iam_role_policy_attachment.eks_cni_policy,
-    aws_iam_role_policy_attachment.eks_registry_policy
+    aws_iam_role_policy_attachment.eks_registry_policy,
+    # Nodes live in private subnets and must reach the EKS public API endpoint
+    # via the NAT gateway to complete bootstrap. Without these explicit deps,
+    # Terraform can race the node group creation ahead of the NAT/route setup
+    # (especially when the cluster already exists from a prior run), causing
+    # NodeCreationFailure: Instances failed to join the kubernetes cluster.
+    aws_route_table_association.private_app_a,
+    aws_route_table_association.private_app_b
   ]
 }
 
