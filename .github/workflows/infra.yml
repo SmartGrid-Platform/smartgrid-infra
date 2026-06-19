@@ -1,0 +1,80 @@
+name: Infrastructure Management (Terraform)
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Terraform action to perform'
+        required: true
+        default: 'apply'
+        type: choice
+        options:
+          - apply
+          - destroy
+
+jobs:
+  terraform:
+    name: Terraform ${{ github.event.inputs.action }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.7
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        working-directory: ./terraform
+        run: |
+          terraform init
+          terraform workspace select dev || terraform workspace new dev
+
+      - name: Terraform Apply
+        if: github.event.inputs.action == 'apply'
+        working-directory: ./terraform
+        run: |
+          # Step 1: Create networking + EKS (must come first so Kubernetes/Helm
+          # providers have a live cluster to connect to in step 2).
+          # The private-subnet route table associations are targeted explicitly so
+          # Terraform's dependency resolver builds the full NAT gateway chain
+          # (IGW → EIP → NAT → private_rt → associations) before any EKS node
+          # tries to bootstrap. Without this the nodes boot in isolated private
+          # subnets, can't reach the EKS public API endpoint, and fail with
+          # NodeCreationFailure.
+          terraform apply -auto-approve \
+            -target=module.smartgrid_core.aws_eks_cluster.eks \
+            -target=module.smartgrid_core.aws_eks_node_group.nodes \
+            -target=module.smartgrid_core.aws_iam_openid_connect_provider.eks \
+            -target=module.smartgrid_core.aws_route_table_association.private_app_a \
+            -target=module.smartgrid_core.aws_route_table_association.private_app_b
+
+          # Step 2: Full apply — EKS is live so Kubernetes/Helm providers can
+          # initialize. Creates RDS, ECR, CloudFront, ALB, Lambdas, SNS,
+          # Secrets Manager, and the AWS Load Balancer Controller via Helm.
+          terraform apply -auto-approve
+
+      - name: Terraform Destroy
+        if: github.event.inputs.action == 'destroy'
+        working-directory: ./terraform
+        run: terraform destroy -auto-approve
+
+      - name: Show Outputs
+        if: github.event.inputs.action == 'apply'
+        working-directory: ./terraform
+        run: |
+          echo "### Infrastructure Outputs" >> $GITHUB_STEP_SUMMARY
+          echo "- EKS Cluster: $(terraform output -raw eks_cluster_name)"        >> $GITHUB_STEP_SUMMARY
+          echo "- ECR Registry: $(terraform output -raw ecr_registry_url)"       >> $GITHUB_STEP_SUMMARY
+          echo "- RDS Endpoint: $(terraform output -raw rds_endpoint)"           >> $GITHUB_STEP_SUMMARY
+          echo "- CloudFront: $(terraform output -raw cloudfront_url)"           >> $GITHUB_STEP_SUMMARY

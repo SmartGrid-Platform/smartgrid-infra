@@ -1,4 +1,7 @@
-name: CI/CD - AWS EKS Migration & Deployment
+name: CI/CD - Build, Push & Deploy to EKS
+
+# Assumes infrastructure (EKS, RDS, ECR, Secrets Manager) already exists.
+# Run the infra.yml workflow once to provision it before using this pipeline.
 
 on:
   push:
@@ -8,6 +11,9 @@ on:
   workflow_dispatch:
 
 jobs:
+  # ─────────────────────────────────────────────────────────────
+  # 1. Security Scanning (non-blocking)
+  # ─────────────────────────────────────────────────────────────
   security-scans:
     name: Security Scanning (Checkov & Trivy)
     runs-on: ubuntu-latest
@@ -31,60 +37,16 @@ jobs:
           exit-code: '0'
           severity: 'CRITICAL,HIGH'
 
-  deploy-infrastructure:
-    name: Deploy AWS Infrastructure (Terraform)
+  # ─────────────────────────────────────────────────────────────
+  # 2. Build & Push all Docker images to ECR
+  # ─────────────────────────────────────────────────────────────
+  build-and-push-images:
+    name: Build & Push Docker Images to ECR
     runs-on: ubuntu-latest
     needs: security-scans
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+    outputs:
+      ecr_registry: ${{ steps.login-ecr.outputs.registry }}
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: 1.5.7
-          terraform_wrapper: false
-
-      - name: Terraform Init & Apply
-        working-directory: ./terraform
-        run: |
-          terraform init
-          terraform workspace select dev || terraform workspace new dev
-
-          # Step 1: Create EKS cluster and node group first (+ all networking dependencies).
-          # The Kubernetes/Helm providers in providers.tf need a live cluster endpoint to
-          # initialize — they can't run against a cluster that doesn't exist yet.
-          #
-          # IMPORTANT: the private-subnet route table associations must be targeted
-          # explicitly here. They are NOT in the dependency graph of aws_eks_node_group
-          # (Terraform only sees subnet IDs, not the routes attached to those subnets).
-          # Without the NAT gateway route, nodes in private subnets have no path to the
-          # EKS control plane API and fail with NodeCreationFailure.
-          # Targeting the associations pulls in their full chain:
-          #   IGW → EIP → NAT gateway → private route table → associations.
-          terraform apply -auto-approve \
-            -target=module.smartgrid_core.aws_eks_cluster.eks \
-            -target=module.smartgrid_core.aws_eks_node_group.nodes \
-            -target=module.smartgrid_core.aws_iam_openid_connect_provider.eks \
-            -target=module.smartgrid_core.aws_route_table_association.private_app_a \
-            -target=module.smartgrid_core.aws_route_table_association.private_app_b
-
-          # Step 2: Full apply — EKS is now in state so providers initialize correctly.
-          # This creates RDS, CloudFront, ALB, Lambdas, SNS, Secrets Manager,
-          # and deploys the AWS Load Balancer Controller via Helm.
-          terraform apply -auto-approve
-
-  build-and-push-images:
-    name: Build & Push Docker Images to AWS ECR
-    runs-on: ubuntu-latest
-    needs: deploy-infrastructure
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
@@ -125,10 +87,15 @@ jobs:
           docker push $ECR_REGISTRY/smartgrid-dev-frontend:${{ github.sha }}
           docker push $ECR_REGISTRY/smartgrid-dev-frontend:latest
 
+  # ─────────────────────────────────────────────────────────────
+  # 3. Deploy to EKS via Helm
+  #    All runtime values come from AWS APIs — no Terraform needed.
+  # ─────────────────────────────────────────────────────────────
   deploy-to-eks:
     name: Deploy to AWS EKS (Helm)
     runs-on: ubuntu-latest
     needs: build-and-push-images
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
@@ -140,12 +107,6 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: 1.5.7
-          terraform_wrapper: false
-
       - name: Install kubectl & Helm
         run: |
           curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
@@ -154,24 +115,28 @@ jobs:
 
       - name: Configure kubeconfig
         run: |
-          aws eks update-kubeconfig --region ${{ secrets.AWS_REGION }} --name smartgrid-dev-cluster
+          aws eks update-kubeconfig \
+            --region ${{ secrets.AWS_REGION }} \
+            --name smartgrid-dev-cluster
 
-      - name: Fetch runtime values from Terraform & Secrets Manager
+      - name: Fetch runtime values from AWS
         id: runtime
         run: |
-          cd terraform
-          terraform init -input=false
-          terraform workspace select dev
+          # ECR registry — derived from caller identity, no Terraform output needed
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          ECR_REGISTRY="${ACCOUNT_ID}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com"
 
-          DB_HOST=$(terraform output -raw rds_endpoint | cut -d':' -f1)
-          ECR_REGISTRY=$(terraform output -raw ecr_registry_url)
-          IRSA_ROLE_ARN=$(terraform output -raw eks_pod_role_arn)
-          cd ..
+          # IRSA role ARN — fetched from IAM directly
+          IRSA_ROLE_ARN=$(aws iam get-role \
+            --role-name "smartgrid-dev-eks-pod-role" \
+            --query 'Role.Arn' --output text)
 
-          # Pull DB credentials from Secrets Manager (secret key: smartgrid/config)
+          # DB host, DB password, JWT secret — all stored in Secrets Manager by Terraform
           SECRET_JSON=$(aws secretsmanager get-secret-value \
             --secret-id smartgrid/config \
             --query 'SecretString' --output text)
+
+          DB_HOST=$(echo "$SECRET_JSON"     | jq -r '.DB_HOST')
           DB_PASSWORD=$(echo "$SECRET_JSON" | jq -r '.DB_PASSWORD')
           JWT_SECRET=$(echo "$SECRET_JSON"  | jq -r '.JWT_SECRET')
 
@@ -179,17 +144,14 @@ jobs:
           echo "::add-mask::$DB_PASSWORD"
           echo "::add-mask::$JWT_SECRET"
 
-          # Export for downstream steps
-          echo "db_host=$DB_HOST"           >> $GITHUB_OUTPUT
-          echo "ecr_registry=$ECR_REGISTRY" >> $GITHUB_OUTPUT
-          echo "irsa_role_arn=$IRSA_ROLE_ARN" >> $GITHUB_OUTPUT
-          echo "db_password=$DB_PASSWORD"   >> $GITHUB_OUTPUT
-          echo "jwt_secret=$JWT_SECRET"     >> $GITHUB_OUTPUT
+          echo "ecr_registry=$ECR_REGISTRY"     >> $GITHUB_OUTPUT
+          echo "irsa_role_arn=$IRSA_ROLE_ARN"   >> $GITHUB_OUTPUT
+          echo "db_host=$DB_HOST"               >> $GITHUB_OUTPUT
+          echo "db_password=$DB_PASSWORD"       >> $GITHUB_OUTPUT
+          echo "jwt_secret=$JWT_SECRET"         >> $GITHUB_OUTPUT
 
       - name: Helm upgrade / install
         run: |
-          # Write IRSA annotation to a temp values file to avoid shell escaping issues
-          # with dots in the annotation key eks.amazonaws.com/role-arn
           cat > /tmp/irsa-values.yaml << EOF
           serviceAccount:
             annotations:
@@ -213,14 +175,17 @@ jobs:
         if: always()
         run: kubectl get pods -n default -o wide
 
+  # ─────────────────────────────────────────────────────────────
+  # 4. Switch CloudFront origin to the EKS ALB
+  #    Waits for the AWS LBC to provision the ALB, then updates
+  #    CloudFront via AWS CLI — no Terraform needed.
+  # ─────────────────────────────────────────────────────────────
   update-cloudfront:
     name: Switch CloudFront to EKS ALB
     runs-on: ubuntu-latest
     needs: deploy-to-eks
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
 
+    steps:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -235,7 +200,9 @@ jobs:
 
       - name: Configure kubeconfig
         run: |
-          aws eks update-kubeconfig --region ${{ secrets.AWS_REGION }} --name smartgrid-dev-cluster
+          aws eks update-kubeconfig \
+            --region ${{ secrets.AWS_REGION }} \
+            --name smartgrid-dev-cluster
 
       - name: Wait for EKS ALB to be provisioned
         id: get-alb
@@ -259,23 +226,43 @@ jobs:
           fi
           echo "eks_alb_dns=$EKS_ALB_DNS" >> $GITHUB_OUTPUT
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: 1.5.7
-          terraform_wrapper: false
-
-      - name: Terraform apply — point CloudFront at EKS ALB
-        working-directory: ./terraform
+      - name: Update CloudFront origin to point at EKS ALB
         run: |
-          terraform init -input=false
-          terraform workspace select dev
-          terraform apply -auto-approve \
-            -target=module.smartgrid_core.aws_cloudfront_distribution.cdn \
-            -var="eks_alb_dns=${{ steps.get-alb.outputs.eks_alb_dns }}"
+          EKS_ALB_DNS="${{ steps.get-alb.outputs.eks_alb_dns }}"
+
+          # Find the CloudFront distribution by the ALB-API origin ID
+          DIST_ID=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?contains(to_string(Origins), 'ALB-API')].Id" \
+            --output text)
+
+          if [ -z "$DIST_ID" ]; then
+            echo "ERROR: Could not find CloudFront distribution with ALB-API origin."
+            exit 1
+          fi
+
+          echo "Found distribution: $DIST_ID"
+
+          # Fetch current config + ETag (required for update)
+          CONFIG_JSON=$(aws cloudfront get-distribution-config --id "$DIST_ID")
+          ETAG=$(echo "$CONFIG_JSON" | jq -r '.ETag')
+          DIST_CONFIG=$(echo "$CONFIG_JSON" | jq '.DistributionConfig')
+
+          # Swap the ALB-API origin domain to the EKS ALB
+          UPDATED_CONFIG=$(echo "$DIST_CONFIG" | jq \
+            --arg alb "$EKS_ALB_DNS" \
+            '.Origins.Items = (.Origins.Items | map(if .Id == "ALB-API" then .DomainName = $alb else . end))')
+
+          echo "$UPDATED_CONFIG" > /tmp/cf-config.json
+
+          aws cloudfront update-distribution \
+            --id "$DIST_ID" \
+            --if-match "$ETAG" \
+            --distribution-config file:///tmp/cf-config.json
+
+          echo "CloudFront distribution $DIST_ID updated."
 
       - name: Summary
         run: |
           echo "### Deployment complete" >> $GITHUB_STEP_SUMMARY
-          echo "- EKS ALB DNS: ${{ steps.get-alb.outputs.eks_alb_dns }}" >> $GITHUB_STEP_SUMMARY
-          echo "- CloudFront now routes /api/* to the EKS ALB" >> $GITHUB_STEP_SUMMARY
+          echo "- EKS ALB DNS: ${{ steps.get-alb.outputs.eks_alb_dns }}"   >> $GITHUB_STEP_SUMMARY
+          echo "- CloudFront now routes /api/* to the EKS ALB"              >> $GITHUB_STEP_SUMMARY
