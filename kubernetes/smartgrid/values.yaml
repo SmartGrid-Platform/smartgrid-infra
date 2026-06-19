@@ -96,11 +96,7 @@ services:
     port: 3004
     replicaCount: 1
     image: billing-service
-    env:
-      LAMBDA_BILL_GENERATOR: "smartgrid-dev-bill-generator"
-      LAMBDA_TARIFF_ENGINE: "smartgrid-dev-tariff-engine"
-      LAMBDA_UNIT_CALCULATOR: "smartgrid-dev-unit-calculator"
-      S3_BUCKET_NAME: "smartgrid-dev-billing-bucket"
+    env: {}
 
   alert-service:
     port: 3005
@@ -114,8 +110,8 @@ services:
     image: ai-assistant-service
     env:
       BEDROCK_REGION: "us-east-1"
-      BEDROCK_MODEL_PRIMARY: "amazon.nova-pro-v1:0"
-      BEDROCK_MODEL_FALLBACK: "amazon.nova-lite-v1:0"
+      BEDROCK_MODEL_PRIMARY: "us.amazon.nova-pro-v1:0"
+      BEDROCK_MODEL_FALLBACK: "us.amazon.nova-lite-v1:0"
       CONSUMER_SERVICE_URL: "http://consumer-service:3002"
       BILLING_SERVICE_URL: "http://billing-service:3004"
       METER_SERVICE_URL: "http://meter-service:3003"

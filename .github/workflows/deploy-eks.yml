@@ -262,6 +262,7 @@ jobs:
           terraform init -input=false
           terraform workspace select dev
           terraform apply -auto-approve \
+            -target=module.smartgrid_core.aws_cloudfront_distribution.cdn \
             -var="eks_alb_dns=${{ steps.get-alb.outputs.eks_alb_dns }}"
 
       - name: Summary
