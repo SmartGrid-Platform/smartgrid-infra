@@ -2,31 +2,34 @@
 # Local Compilation & S3 Upload Automation
 #################################################
 
-resource "null_resource" "build_frontend" {
-  triggers = {
-    # Force build on every apply to ensure code is synchronized
-    always_run = timestamp()
-  }
-
-  provisioner "local-exec" {
-    working_dir = "${path.root}/../frontend"
-    command     = "npm install && npm run build"
-  }
-}
-
 resource "null_resource" "upload_frontend" {
-  depends_on = [
-    null_resource.build_frontend,
-    aws_s3_bucket.frontend_bucket
-  ]
+  depends_on = [aws_s3_bucket.frontend_bucket]
 
   triggers = {
-    # Force upload when build finishes
     always_run = timestamp()
   }
 
+  # Builds the React app and uploads to S3 in one step.
+  # Requires Node.js (npm) on the machine running terraform apply.
+  # If npm is not installed, this step is skipped gracefully so the rest
+  # of the infrastructure is still created. Upload the frontend manually:
+  #   cd frontend && npm install && npm run build
+  #   aws s3 sync dist s3://<frontend-bucket> --delete
   provisioner "local-exec" {
-    command = "aws s3 sync ${path.root}/../frontend/dist s3://${aws_s3_bucket.frontend_bucket.id} --delete"
+    interpreter = ["powershell", "-NonInteractive", "-Command"]
+    command     = <<-EOT
+      $npm = Get-Command npm -ErrorAction SilentlyContinue
+      if ($null -eq $npm) {
+        Write-Host "WARNING: npm not found - skipping frontend build. Upload manually after installing Node.js."
+        exit 0
+      }
+      Set-Location "${path.root}/../frontend"
+      npm install
+      if (-not $?) { exit 1 }
+      npm run build
+      if (-not $?) { exit 1 }
+      aws s3 sync dist s3://${aws_s3_bucket.frontend_bucket.id} --delete
+    EOT
   }
 }
 

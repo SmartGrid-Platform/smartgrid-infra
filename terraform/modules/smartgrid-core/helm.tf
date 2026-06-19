@@ -257,57 +257,42 @@ resource "null_resource" "install_lbc" {
   }
 
   provisioner "local-exec" {
-    command = <<-EOT
-      set -e
+    interpreter = ["powershell", "-NonInteractive", "-Command"]
+    command     = <<-EOT
+      $ErrorActionPreference = 'Stop'
 
-      echo "--- Updating kubeconfig ---"
-      aws eks update-kubeconfig \
-        --region ${var.aws_region} \
-        --name   ${aws_eks_cluster.eks.name}
+      Write-Host "--- Updating kubeconfig ---"
+      aws eks update-kubeconfig --region ${var.aws_region} --name ${aws_eks_cluster.eks.name}
+      if (-not $?) { exit 1 }
 
-      echo "--- Waiting for nodes to be Ready (up to 5 min) ---"
-      kubectl wait --for=condition=Ready nodes \
-        --all --timeout=300s
+      Write-Host "--- Waiting for nodes to be Ready (up to 5 min) ---"
+      kubectl wait --for=condition=Ready nodes --all --timeout=300s
+      if (-not $?) { exit 1 }
 
-      echo "--- Creating LBC ServiceAccount with IRSA annotation ---"
-      kubectl create serviceaccount aws-load-balancer-controller \
-        -n kube-system --dry-run=client -o yaml | kubectl apply -f -
-      kubectl annotate serviceaccount aws-load-balancer-controller \
-        -n kube-system \
-        eks.amazonaws.com/role-arn=${aws_iam_role.aws_load_balancer_controller.arn} \
-        --overwrite
+      Write-Host "--- Creating LBC ServiceAccount with IRSA annotation ---"
+      kubectl create serviceaccount aws-load-balancer-controller -n kube-system --dry-run=client -o yaml | kubectl apply -f -
+      kubectl annotate serviceaccount aws-load-balancer-controller -n kube-system eks.amazonaws.com/role-arn=${aws_iam_role.aws_load_balancer_controller.arn} --overwrite
 
-      echo "--- Installing AWS Load Balancer Controller via Helm ---"
-      helm repo add eks https://aws.github.io/eks-charts 2>/dev/null || true
+      Write-Host "--- Installing AWS Load Balancer Controller via Helm ---"
+      helm repo add eks https://aws.github.io/eks-charts 2>$null
       helm repo update eks
-      helm upgrade --install aws-load-balancer-controller \
-        eks/aws-load-balancer-controller \
-        --namespace kube-system \
-        --version   1.6.2 \
-        --set clusterName=${aws_eks_cluster.eks.name} \
-        --set serviceAccount.create=false \
-        --set serviceAccount.name=aws-load-balancer-controller \
-        --set region=${var.aws_region} \
-        --set vpcId=${aws_vpc.smartgrid_vpc.id} \
-        --wait --timeout 5m
+      helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller --namespace kube-system --version 1.6.2 --set clusterName=${aws_eks_cluster.eks.name} --set serviceAccount.create=false --set serviceAccount.name=aws-load-balancer-controller --set region=${var.aws_region} --set vpcId=${aws_vpc.smartgrid_vpc.id} --wait --timeout 5m
+      if (-not $?) { exit 1 }
 
-      echo "--- LBC installed successfully ---"
+      Write-Host "--- LBC installed successfully ---"
     EOT
   }
 
-  # On destroy: uninstall application + LBC Helm releases before the cluster
-  # is torn down. This removes any ALBs the LBC created so the VPC can be
-  # destroyed cleanly (AWS blocks VPC deletion if active load balancers exist).
+  # On destroy: uninstall Helm releases before the cluster is torn down so
+  # the LBC-created ALBs are deleted and the VPC can be destroyed cleanly.
   provisioner "local-exec" {
-    when = destroy
-    command = <<-EOT
-      aws eks update-kubeconfig \
-        --region ${self.triggers.aws_region} \
-        --name   ${self.triggers.cluster_name} 2>/dev/null || true
-      helm uninstall smartgrid                  -n default    2>/dev/null || true
-      helm uninstall aws-load-balancer-controller -n kube-system 2>/dev/null || true
-      kubectl delete serviceaccount aws-load-balancer-controller \
-        -n kube-system 2>/dev/null || true
+    when        = destroy
+    interpreter = ["powershell", "-NonInteractive", "-Command"]
+    command     = <<-EOT
+      aws eks update-kubeconfig --region ${self.triggers.aws_region} --name ${self.triggers.cluster_name} 2>$null
+      try { helm uninstall smartgrid -n default 2>$null } catch {}
+      try { helm uninstall aws-load-balancer-controller -n kube-system 2>$null } catch {}
+      try { kubectl delete serviceaccount aws-load-balancer-controller -n kube-system 2>$null } catch {}
     EOT
   }
 
