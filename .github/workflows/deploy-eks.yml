@@ -58,14 +58,23 @@ jobs:
           terraform init
           terraform workspace select dev || terraform workspace new dev
 
-          # Step 1: Create EKS cluster and node group first (+ all their AWS dependencies).
+          # Step 1: Create EKS cluster and node group first (+ all networking dependencies).
           # The Kubernetes/Helm providers in providers.tf need a live cluster endpoint to
           # initialize — they can't run against a cluster that doesn't exist yet.
-          # -target pulls in all upstream dependencies automatically (VPC, IAM, subnets…).
+          #
+          # IMPORTANT: the private-subnet route table associations must be targeted
+          # explicitly here. They are NOT in the dependency graph of aws_eks_node_group
+          # (Terraform only sees subnet IDs, not the routes attached to those subnets).
+          # Without the NAT gateway route, nodes in private subnets have no path to the
+          # EKS control plane API and fail with NodeCreationFailure.
+          # Targeting the associations pulls in their full chain:
+          #   IGW → EIP → NAT gateway → private route table → associations.
           terraform apply -auto-approve \
             -target=module.smartgrid_core.aws_eks_cluster.eks \
             -target=module.smartgrid_core.aws_eks_node_group.nodes \
-            -target=module.smartgrid_core.aws_iam_openid_connect_provider.eks
+            -target=module.smartgrid_core.aws_iam_openid_connect_provider.eks \
+            -target=module.smartgrid_core.aws_route_table_association.private_app_a \
+            -target=module.smartgrid_core.aws_route_table_association.private_app_b
 
           # Step 2: Full apply — EKS is now in state so providers initialize correctly.
           # This creates RDS, CloudFront, ALB, Lambdas, SNS, Secrets Manager,
