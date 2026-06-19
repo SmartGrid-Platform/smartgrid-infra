@@ -43,26 +43,7 @@ jobs:
       - name: Terraform Apply
         if: github.event.inputs.action == 'apply'
         working-directory: ./terraform
-        run: |
-          # Step 1: Create networking + EKS (must come first so Kubernetes/Helm
-          # providers have a live cluster to connect to in step 2).
-          # The private-subnet route table associations are targeted explicitly so
-          # Terraform's dependency resolver builds the full NAT gateway chain
-          # (IGW → EIP → NAT → private_rt → associations) before any EKS node
-          # tries to bootstrap. Without this the nodes boot in isolated private
-          # subnets, can't reach the EKS public API endpoint, and fail with
-          # NodeCreationFailure.
-          terraform apply -auto-approve \
-            -target=module.smartgrid_core.aws_eks_cluster.eks \
-            -target=module.smartgrid_core.aws_eks_node_group.nodes \
-            -target=module.smartgrid_core.aws_iam_openid_connect_provider.eks \
-            -target=module.smartgrid_core.aws_route_table_association.private_app_a \
-            -target=module.smartgrid_core.aws_route_table_association.private_app_b
-
-          # Step 2: Full apply — EKS is live so Kubernetes/Helm providers can
-          # initialize. Creates RDS, ECR, CloudFront, ALB, Lambdas, SNS,
-          # Secrets Manager, and the AWS Load Balancer Controller via Helm.
-          terraform apply -auto-approve
+        run: terraform apply -auto-approve
 
       - name: Terraform Destroy
         if: github.event.inputs.action == 'destroy'

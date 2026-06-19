@@ -236,56 +236,83 @@ resource "aws_iam_role_policy_attachment" "aws_load_balancer_controller_attach" 
   policy_arn = aws_iam_policy.aws_load_balancer_controller.arn
 }
 
-# 3. K8s ServiceAccount for AWS Load Balancer Controller
-resource "kubernetes_service_account" "aws_load_balancer_controller" {
-  metadata {
-    name      = "aws-load-balancer-controller"
-    namespace = "kube-system"
-    annotations = {
-      "eks.amazonaws.com/role-arn" = aws_iam_role.aws_load_balancer_controller.arn
-    }
+# 3. Install AWS Load Balancer Controller via local kubectl + helm CLIs.
+#
+# Using null_resource instead of the Terraform kubernetes/helm providers
+# avoids the chicken-and-egg problem: those providers need a live cluster
+# endpoint to initialise, but the cluster doesn't exist yet on first apply.
+# null_resource runs AFTER the node group is ACTIVE so the cluster is ready.
+#
+# Prerequisites on the machine running terraform apply:
+#   - aws CLI configured with the deployment credentials
+#   - kubectl  (https://kubernetes.io/docs/tasks/tools/)
+#   - helm     (https://helm.sh/docs/intro/install/)
+resource "null_resource" "install_lbc" {
+  # Re-run whenever the cluster name, IAM role, or VPC changes
+  triggers = {
+    cluster_name = aws_eks_cluster.eks.name
+    role_arn     = aws_iam_role.aws_load_balancer_controller.arn
+    aws_region   = var.aws_region
+    vpc_id       = aws_vpc.smartgrid_vpc.id
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      set -e
+
+      echo "--- Updating kubeconfig ---"
+      aws eks update-kubeconfig \
+        --region ${var.aws_region} \
+        --name   ${aws_eks_cluster.eks.name}
+
+      echo "--- Waiting for nodes to be Ready (up to 5 min) ---"
+      kubectl wait --for=condition=Ready nodes \
+        --all --timeout=300s
+
+      echo "--- Creating LBC ServiceAccount with IRSA annotation ---"
+      kubectl create serviceaccount aws-load-balancer-controller \
+        -n kube-system --dry-run=client -o yaml | kubectl apply -f -
+      kubectl annotate serviceaccount aws-load-balancer-controller \
+        -n kube-system \
+        eks.amazonaws.com/role-arn=${aws_iam_role.aws_load_balancer_controller.arn} \
+        --overwrite
+
+      echo "--- Installing AWS Load Balancer Controller via Helm ---"
+      helm repo add eks https://aws.github.io/eks-charts 2>/dev/null || true
+      helm repo update eks
+      helm upgrade --install aws-load-balancer-controller \
+        eks/aws-load-balancer-controller \
+        --namespace kube-system \
+        --version   1.6.2 \
+        --set clusterName=${aws_eks_cluster.eks.name} \
+        --set serviceAccount.create=false \
+        --set serviceAccount.name=aws-load-balancer-controller \
+        --set region=${var.aws_region} \
+        --set vpcId=${aws_vpc.smartgrid_vpc.id} \
+        --wait --timeout 5m
+
+      echo "--- LBC installed successfully ---"
+    EOT
+  }
+
+  # On destroy: uninstall application + LBC Helm releases before the cluster
+  # is torn down. This removes any ALBs the LBC created so the VPC can be
+  # destroyed cleanly (AWS blocks VPC deletion if active load balancers exist).
+  provisioner "local-exec" {
+    when = destroy
+    command = <<-EOT
+      aws eks update-kubeconfig \
+        --region ${self.triggers.aws_region} \
+        --name   ${self.triggers.cluster_name} 2>/dev/null || true
+      helm uninstall smartgrid                  -n default    2>/dev/null || true
+      helm uninstall aws-load-balancer-controller -n kube-system 2>/dev/null || true
+      kubectl delete serviceaccount aws-load-balancer-controller \
+        -n kube-system 2>/dev/null || true
+    EOT
   }
 
   depends_on = [
-    aws_eks_node_group.nodes
-  ]
-}
-
-# 4. Deploy AWS Load Balancer Controller via Helm
-resource "helm_release" "aws_load_balancer_controller" {
-  name       = "aws-load-balancer-controller"
-  repository = "https://aws.github.io/eks-charts"
-  chart      = "aws-load-balancer-controller"
-  namespace  = "kube-system"
-  version    = "1.6.2"
-
-  set {
-    name  = "clusterName"
-    value = aws_eks_cluster.eks.name
-  }
-
-  set {
-    name  = "serviceAccount.create"
-    value = "false"
-  }
-
-  set {
-    name  = "serviceAccount.name"
-    value = kubernetes_service_account.aws_load_balancer_controller.metadata[0].name
-  }
-
-  set {
-    name  = "region"
-    value = var.aws_region
-  }
-
-  set {
-    name  = "vpcId"
-    value = aws_vpc.smartgrid_vpc.id
-  }
-
-  depends_on = [
-    kubernetes_service_account.aws_load_balancer_controller,
-    aws_eks_node_group.nodes
+    aws_eks_node_group.nodes,
+    aws_iam_role_policy_attachment.aws_load_balancer_controller_attach
   ]
 }
