@@ -28,5 +28,10 @@ output "rds_endpoint" {
   description = "The connection endpoint for the RDS MySQL instance"
 }
 
+output "eks_pod_role_arn" {
+  value       = module.smartgrid_core.eks_pod_role_arn
+  description = "IAM Role ARN for EKS pods (IRSA) — injected into Helm serviceAccount"
+}
+
 
 

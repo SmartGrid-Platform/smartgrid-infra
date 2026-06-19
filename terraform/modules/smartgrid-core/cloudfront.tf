@@ -101,6 +101,13 @@ resource "aws_wafv2_web_acl" "cdn_waf" {
 # CloudFront CDN Distribution
 #################################################
 
+locals {
+  # On first apply eks_alb_dns is "" so CloudFront keeps pointing to the EC2 ALB.
+  # After Helm creates the EKS ALB, the pipeline runs terraform apply -var eks_alb_dns="..."
+  # and CloudFront switches over to EKS with zero downtime.
+  api_alb_dns = var.eks_alb_dns != "" ? var.eks_alb_dns : aws_lb.external_alb.dns_name
+}
+
 resource "aws_cloudfront_distribution" "cdn" {
   enabled             = true
   is_ipv6_enabled     = true
@@ -114,9 +121,9 @@ resource "aws_cloudfront_distribution" "cdn" {
     origin_access_control_id = aws_cloudfront_origin_access_control.oac.id
   }
 
-  # Origin 2: Public ALB for microservices APIs
+  # Origin 2: Public ALB for microservices APIs (EKS ALB after migration)
   origin {
-    domain_name = aws_lb.external_alb.dns_name
+    domain_name = local.api_alb_dns
     origin_id   = "ALB-API"
 
     custom_origin_config {

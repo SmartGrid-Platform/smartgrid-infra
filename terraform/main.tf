@@ -8,6 +8,7 @@ module "smartgrid_core" {
   asg_min_size      = terraform.workspace == "prod" ? 2 : 1
   asg_max_size      = terraform.workspace == "prod" ? 4 : 2
   vpc_cidr          = terraform.workspace == "prod" ? "10.0.0.0/16" : "10.1.0.0/16"
+  eks_alb_dns       = var.eks_alb_dns
 
   providers = {
     aws           = aws

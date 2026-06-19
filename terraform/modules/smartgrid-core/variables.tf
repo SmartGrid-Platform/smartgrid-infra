@@ -39,4 +39,10 @@ variable "vpc_cidr" {
   default     = "10.0.0.0/16"
 }
 
+variable "eks_alb_dns" {
+  description = "DNS hostname of the ALB created by the EKS Load Balancer Controller. Empty on first apply; set after Helm deploy to switch CloudFront to EKS."
+  type        = string
+  default     = ""
+}
+
 
