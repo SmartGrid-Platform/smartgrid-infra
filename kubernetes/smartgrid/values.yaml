@@ -1,10 +1,10 @@
 # Default values for smartgrid Helm Chart.
 # This is a YAML-formatted file.
 
-environment: dev
+environment: default
 awsRegion: ap-south-1
 imageTag: latest
-ecrRegistryUrl: "123456789012.dkr.ecr.ap-south-1.amazonaws.com" # AWS Account ECR Registry URL
+ecrRegistryUrl: "169720629031.dkr.ecr.ap-south-1.amazonaws.com"
 
 # Database credentials (to be securely passed during helm install or retrieved via AWS Secrets Manager)
 database:
@@ -24,7 +24,7 @@ ingress:
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
-    alb.ingress.kubernetes.io/load-balancer-name: smartgrid-dev-eks-alb
+    alb.ingress.kubernetes.io/load-balancer-name: smartgrid-default-eks-alb
   hosts:
     - host: ""
       paths:
@@ -70,7 +70,7 @@ serviceAccount:
   create: true
   annotations:
     # Will be populated with the IAM Role ARN created by Terraform
-    eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/smartgrid-dev-eks-pod-role"
+    eks.amazonaws.com/role-arn: "arn:aws:iam::169720629031:role/smartgrid-default-eks-pod-role"
 
 # Microservices configuration
 services:

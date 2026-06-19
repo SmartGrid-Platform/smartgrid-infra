@@ -1,14 +1,16 @@
 name: CI/CD - Build, Push & Deploy to EKS
 
-# Assumes infrastructure (EKS, RDS, ECR, Secrets Manager) already exists.
-# Run the infra.yml workflow once to provision it before using this pipeline.
-
 on:
   push:
     branches:
       - eksmigration
       - main
   workflow_dispatch:
+
+env:
+  CLUSTER_NAME: smartgrid-default-cluster
+  ENVIRONMENT: default
+  AWS_REGION: ${{ secrets.AWS_REGION }}
 
 jobs:
   # ─────────────────────────────────────────────────────────────
@@ -69,27 +71,17 @@ jobs:
           SERVICES=("auth-service" "consumer-service" "meter-service" "billing-service" "alert-service" "ai-assistant-service")
           for SERVICE in "${SERVICES[@]}"; do
             echo "Building $SERVICE..."
-            docker build -t $ECR_REGISTRY/smartgrid-dev-$SERVICE:${{ github.sha }} \
-                         -t $ECR_REGISTRY/smartgrid-dev-$SERVICE:latest \
-                         -f services/$SERVICE/Dockerfile .
+            docker build \
+              -t $ECR_REGISTRY/smartgrid-${{ env.ENVIRONMENT }}-$SERVICE:${{ github.sha }} \
+              -t $ECR_REGISTRY/smartgrid-${{ env.ENVIRONMENT }}-$SERVICE:latest \
+              -f services/$SERVICE/Dockerfile .
             echo "Pushing $SERVICE..."
-            docker push $ECR_REGISTRY/smartgrid-dev-$SERVICE:${{ github.sha }}
-            docker push $ECR_REGISTRY/smartgrid-dev-$SERVICE:latest
+            docker push $ECR_REGISTRY/smartgrid-${{ env.ENVIRONMENT }}-$SERVICE:${{ github.sha }}
+            docker push $ECR_REGISTRY/smartgrid-${{ env.ENVIRONMENT }}-$SERVICE:latest
           done
-
-      - name: Build and Push Frontend
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        run: |
-          docker build -t $ECR_REGISTRY/smartgrid-dev-frontend:${{ github.sha }} \
-                       -t $ECR_REGISTRY/smartgrid-dev-frontend:latest \
-                       -f frontend/Dockerfile .
-          docker push $ECR_REGISTRY/smartgrid-dev-frontend:${{ github.sha }}
-          docker push $ECR_REGISTRY/smartgrid-dev-frontend:latest
 
   # ─────────────────────────────────────────────────────────────
   # 3. Deploy to EKS via Helm
-  #    All runtime values come from AWS APIs — no Terraform needed.
   # ─────────────────────────────────────────────────────────────
   deploy-to-eks:
     name: Deploy to AWS EKS (Helm)
@@ -117,21 +109,18 @@ jobs:
         run: |
           aws eks update-kubeconfig \
             --region ${{ secrets.AWS_REGION }} \
-            --name smartgrid-dev-cluster
+            --name ${{ env.CLUSTER_NAME }}
 
       - name: Fetch runtime values from AWS
         id: runtime
         run: |
-          # ECR registry — derived from caller identity, no Terraform output needed
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           ECR_REGISTRY="${ACCOUNT_ID}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com"
 
-          # IRSA role ARN — fetched from IAM directly
           IRSA_ROLE_ARN=$(aws iam get-role \
-            --role-name "smartgrid-dev-eks-pod-role" \
+            --role-name "smartgrid-${{ env.ENVIRONMENT }}-eks-pod-role" \
             --query 'Role.Arn' --output text)
 
-          # DB host, DB password, JWT secret — all stored in Secrets Manager by Terraform
           SECRET_JSON=$(aws secretsmanager get-secret-value \
             --secret-id smartgrid/config \
             --query 'SecretString' --output text)
@@ -140,19 +129,18 @@ jobs:
           DB_PASSWORD=$(echo "$SECRET_JSON" | jq -r '.DB_PASSWORD')
           JWT_SECRET=$(echo "$SECRET_JSON"  | jq -r '.JWT_SECRET')
 
-          # Mask secrets in logs
           echo "::add-mask::$DB_PASSWORD"
           echo "::add-mask::$JWT_SECRET"
 
-          echo "ecr_registry=$ECR_REGISTRY"     >> $GITHUB_OUTPUT
-          echo "irsa_role_arn=$IRSA_ROLE_ARN"   >> $GITHUB_OUTPUT
-          echo "db_host=$DB_HOST"               >> $GITHUB_OUTPUT
-          echo "db_password=$DB_PASSWORD"       >> $GITHUB_OUTPUT
-          echo "jwt_secret=$JWT_SECRET"         >> $GITHUB_OUTPUT
+          echo "ecr_registry=$ECR_REGISTRY"   >> $GITHUB_OUTPUT
+          echo "irsa_role_arn=$IRSA_ROLE_ARN" >> $GITHUB_OUTPUT
+          echo "db_host=$DB_HOST"             >> $GITHUB_OUTPUT
+          echo "db_password=$DB_PASSWORD"     >> $GITHUB_OUTPUT
+          echo "jwt_secret=$JWT_SECRET"       >> $GITHUB_OUTPUT
 
       - name: Helm upgrade / install
         run: |
-          cat > /tmp/irsa-values.yaml << EOF
+          cat > /tmp/runtime-values.yaml << EOF
           serviceAccount:
             annotations:
               eks.amazonaws.com/role-arn: "${{ steps.runtime.outputs.irsa_role_arn }}"
@@ -162,7 +150,8 @@ jobs:
             --namespace default \
             --wait \
             --timeout 10m \
-            -f /tmp/irsa-values.yaml \
+            -f /tmp/runtime-values.yaml \
+            --set environment=${{ env.ENVIRONMENT }} \
             --set ecrRegistryUrl="${{ steps.runtime.outputs.ecr_registry }}" \
             --set imageTag="${{ github.sha }}" \
             --set database.host="${{ steps.runtime.outputs.db_host }}" \
@@ -177,8 +166,6 @@ jobs:
 
   # ─────────────────────────────────────────────────────────────
   # 4. Switch CloudFront origin to the EKS ALB
-  #    Waits for the AWS LBC to provision the ALB, then updates
-  #    CloudFront via AWS CLI — no Terraform needed.
   # ─────────────────────────────────────────────────────────────
   update-cloudfront:
     name: Switch CloudFront to EKS ALB
@@ -202,7 +189,7 @@ jobs:
         run: |
           aws eks update-kubeconfig \
             --region ${{ secrets.AWS_REGION }} \
-            --name smartgrid-dev-cluster
+            --name ${{ env.CLUSTER_NAME }}
 
       - name: Wait for EKS ALB to be provisioned
         id: get-alb
@@ -230,7 +217,6 @@ jobs:
         run: |
           EKS_ALB_DNS="${{ steps.get-alb.outputs.eks_alb_dns }}"
 
-          # Find the CloudFront distribution by the ALB-API origin ID
           DIST_ID=$(aws cloudfront list-distributions \
             --query "DistributionList.Items[?contains(to_string(Origins), 'ALB-API')].Id" \
             --output text)
@@ -242,12 +228,10 @@ jobs:
 
           echo "Found distribution: $DIST_ID"
 
-          # Fetch current config + ETag (required for update)
           CONFIG_JSON=$(aws cloudfront get-distribution-config --id "$DIST_ID")
           ETAG=$(echo "$CONFIG_JSON" | jq -r '.ETag')
           DIST_CONFIG=$(echo "$CONFIG_JSON" | jq '.DistributionConfig')
 
-          # Swap the ALB-API origin domain to the EKS ALB
           UPDATED_CONFIG=$(echo "$DIST_CONFIG" | jq \
             --arg alb "$EKS_ALB_DNS" \
             '.Origins.Items = (.Origins.Items | map(if .Id == "ALB-API" then .DomainName = $alb else . end))')
@@ -264,5 +248,6 @@ jobs:
       - name: Summary
         run: |
           echo "### Deployment complete" >> $GITHUB_STEP_SUMMARY
-          echo "- EKS ALB DNS: ${{ steps.get-alb.outputs.eks_alb_dns }}"   >> $GITHUB_STEP_SUMMARY
-          echo "- CloudFront now routes /api/* to the EKS ALB"              >> $GITHUB_STEP_SUMMARY
+          echo "- EKS ALB DNS: ${{ steps.get-alb.outputs.eks_alb_dns }}"  >> $GITHUB_STEP_SUMMARY
+          echo "- CloudFront URL: https://d3juvpxiiqd480.cloudfront.net"   >> $GITHUB_STEP_SUMMARY
+          echo "- API base: https://d3juvpxiiqd480.cloudfront.net/api"     >> $GITHUB_STEP_SUMMARY
