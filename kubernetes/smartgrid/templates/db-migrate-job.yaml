@@ -24,7 +24,7 @@ spec:
           args:
             - |
               npm run migrate && \
-              ADMIN_NAME="Admin" ADMIN_EMAIL="admin@smartgrid.com" ADMIN_PASSWORD="password123" npm run bootstrap
+              ADMIN_NAME="{{ .Values.adminName }}" ADMIN_EMAIL="{{ .Values.adminEmail }}" ADMIN_PASSWORD="{{ .Values.adminPassword }}" npm run bootstrap
           envFrom:
             - configMapRef:
                 name: smartgrid-config

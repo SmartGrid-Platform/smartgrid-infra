@@ -203,7 +203,10 @@ jobs:
             --set database.name="smartgrid" \
             --set database.user="smartgrid_user" \
             --set database.password="${{ steps.runtime.outputs.db_password }}" \
-            --set jwtSecret="${{ steps.runtime.outputs.jwt_secret }}"
+            --set jwtSecret="${{ steps.runtime.outputs.jwt_secret }}" \
+            --set adminName="Admin" \
+            --set adminEmail="${{ secrets.ADMIN_EMAIL || 'admin@smartgrid.com' }}" \
+            --set adminPassword="${{ secrets.ADMIN_PASSWORD || 'Admin@123' }}"
 
       - name: Show pod status
         if: always()

@@ -2,6 +2,11 @@
 # This is a YAML-formatted file.
 
 environment: default
+
+# Admin user seeded on first deploy (migration job)
+adminName: "Admin"
+adminEmail: "admin@smartgrid.com"
+adminPassword: "Admin@123"
 awsRegion: ap-south-1
 imageTag: latest
 ecrRegistryUrl: "169720629031.dkr.ecr.ap-south-1.amazonaws.com"
