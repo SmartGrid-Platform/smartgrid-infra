@@ -5,6 +5,7 @@ on:
     branches:
       - eksmigration
       - main
+  workflow_dispatch:
 
 jobs:
   security-scans:
