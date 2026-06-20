@@ -156,6 +156,7 @@ resource "aws_ecr_repository" "smartgrid_repos" {
   for_each             = toset(["auth-service", "consumer-service", "meter-service", "billing-service", "alert-service", "ai-assistant-service", "frontend"])
   name                 = "smartgrid-${var.environment}-${each.key}"
   image_tag_mutability = "MUTABLE"
+  force_delete         = true
 
   image_scanning_configuration {
     scan_on_push = true
