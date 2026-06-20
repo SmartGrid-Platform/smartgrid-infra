@@ -1,13 +1,13 @@
 module "smartgrid_core" {
   source = "./modules/smartgrid-core"
 
-  environment       = terraform.workspace
+  environment       = var.environment
   aws_region        = var.aws_region
-  instance_type     = terraform.workspace == "prod" ? "t2.medium" : "t2.micro"
-  db_instance_class = terraform.workspace == "prod" ? "db.t3.medium" : "db.t3.micro"
-  asg_min_size      = terraform.workspace == "prod" ? 2 : 1
-  asg_max_size      = terraform.workspace == "prod" ? 4 : 2
-  vpc_cidr          = terraform.workspace == "prod" ? "10.0.0.0/16" : "10.1.0.0/16"
+  vpc_cidr          = var.vpc_cidr
+  instance_type     = var.instance_type
+  db_instance_class = var.db_instance_class
+  asg_min_size      = var.asg_min_size
+  asg_max_size      = var.asg_max_size
   eks_alb_dns       = var.eks_alb_dns
 
   providers = {

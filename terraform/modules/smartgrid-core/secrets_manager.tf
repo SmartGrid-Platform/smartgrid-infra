@@ -28,10 +28,14 @@ resource "aws_secretsmanager_secret_version" "smartgrid_secret_val" {
     LAMBDA_UNIT_CALCULATOR = module.lambda_unit_calculator.lambda_function_name
     LAMBDA_BILL_GENERATOR  = module.lambda_bill_generator.lambda_function_name
     LAMBDA_TARIFF_ENGINE   = module.lambda_tariff_engine.lambda_function_name
-    SNS_LOW_BALANCE_ARN    = module.sns_low_balance.topic_arn
-    SNS_DISCONNECTION_ARN  = module.sns_disconnection.topic_arn
-    BEDROCK_MODEL_PRIMARY  = "us.amazon.nova-pro-v1:0"
-    BEDROCK_MODEL_FALLBACK = "us.amazon.nova-lite-v1:0"
+    SNS_LOW_BALANCE_ARN       = module.sns_low_balance.topic_arn
+    SNS_DISCONNECTION_ARN     = module.sns_disconnection.topic_arn
+    SQS_LOW_BALANCE_URL       = aws_sqs_queue.low_balance.url
+    SQS_DISCONNECTION_URL     = aws_sqs_queue.disconnection.url
+    SQS_LOW_BALANCE_DLQ_URL   = aws_sqs_queue.low_balance_dlq.url
+    SQS_DISCONNECTION_DLQ_URL = aws_sqs_queue.disconnection_dlq.url
+    BEDROCK_MODEL_PRIMARY     = "us.amazon.nova-pro-v1:0"
+    BEDROCK_MODEL_FALLBACK    = "us.amazon.nova-lite-v1:0"
   })
 }
 

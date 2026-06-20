@@ -25,10 +25,24 @@ resource "aws_iam_role_policy_attachment" "eks_cluster_policy" {
   role       = aws_iam_role.eks_cluster_role.name
 }
 
-# 2. EKS Cluster
+# 2. CloudWatch Log Group for EKS control plane logs
+resource "aws_cloudwatch_log_group" "eks" {
+  name              = "/aws/eks/smartgrid-${var.environment}-cluster/cluster"
+  retention_in_days = 7
+
+  tags = {
+    Environment = var.environment
+    Project     = "smartgrid"
+    Owner       = "smartgrid-team"
+  }
+}
+
+# 3. EKS Cluster
 resource "aws_eks_cluster" "eks" {
   name     = "smartgrid-${var.environment}-cluster"
   role_arn = aws_iam_role.eks_cluster_role.arn
+
+  enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
 
   vpc_config {
     subnet_ids = [
@@ -39,8 +53,15 @@ resource "aws_eks_cluster" "eks" {
     ]
   }
 
+  tags = {
+    Environment = var.environment
+    Project     = "smartgrid"
+    Owner       = "smartgrid-team"
+  }
+
   depends_on = [
-    aws_iam_role_policy_attachment.eks_cluster_policy
+    aws_iam_role_policy_attachment.eks_cluster_policy,
+    aws_cloudwatch_log_group.eks
   ]
 }
 
@@ -165,6 +186,7 @@ resource "aws_ecr_repository" "smartgrid_repos" {
   tags = {
     Environment = var.environment
     Project     = "smartgrid"
+    Owner       = "smartgrid-team"
   }
 }
 

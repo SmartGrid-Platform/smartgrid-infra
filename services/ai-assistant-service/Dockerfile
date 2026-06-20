@@ -33,4 +33,5 @@ WORKDIR /app/services/ai-assistant-service
 
 EXPOSE 4004
 ENV NODE_ENV=production
+USER node
 CMD ["node", "server.js"]

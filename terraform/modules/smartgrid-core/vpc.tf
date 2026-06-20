@@ -112,19 +112,34 @@ resource "aws_internet_gateway" "igw" {
 }
 
 #################################################
-# NAT Gateway
+# NAT Gateways — one per AZ for high availability
 #################################################
 
-resource "aws_eip" "nat_eip" {
+resource "aws_eip" "nat_eip_a" {
   domain = "vpc"
 }
 
-resource "aws_nat_gateway" "nat" {
-  allocation_id = aws_eip.nat_eip.id
+resource "aws_eip" "nat_eip_b" {
+  domain = "vpc"
+}
+
+resource "aws_nat_gateway" "nat_a" {
+  allocation_id = aws_eip.nat_eip_a.id
   subnet_id     = aws_subnet.public_a.id
 
   tags = {
-    Name = "smartgrid-${var.environment}-nat"
+    Name = "smartgrid-${var.environment}-nat-a"
+  }
+
+  depends_on = [aws_internet_gateway.igw]
+}
+
+resource "aws_nat_gateway" "nat_b" {
+  allocation_id = aws_eip.nat_eip_b.id
+  subnet_id     = aws_subnet.public_b.id
+
+  tags = {
+    Name = "smartgrid-${var.environment}-nat-b"
   }
 
   depends_on = [aws_internet_gateway.igw]
@@ -153,23 +168,41 @@ resource "aws_route_table_association" "public_b" {
   route_table_id = aws_route_table.public_rt.id
 }
 
-resource "aws_route_table" "private_rt" {
+# Private route table per AZ so each AZ's NAT is used locally
+resource "aws_route_table" "private_rt_a" {
   vpc_id = aws_vpc.smartgrid_vpc.id
 
   route {
     cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.nat.id
+    nat_gateway_id = aws_nat_gateway.nat_a.id
+  }
+
+  tags = {
+    Name = "smartgrid-${var.environment}-private-rt-a"
+  }
+}
+
+resource "aws_route_table" "private_rt_b" {
+  vpc_id = aws_vpc.smartgrid_vpc.id
+
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.nat_b.id
+  }
+
+  tags = {
+    Name = "smartgrid-${var.environment}-private-rt-b"
   }
 }
 
 resource "aws_route_table_association" "private_app_a" {
   subnet_id      = aws_subnet.private_app_a.id
-  route_table_id = aws_route_table.private_rt.id
+  route_table_id = aws_route_table.private_rt_a.id
 }
 
 resource "aws_route_table_association" "private_app_b" {
   subnet_id      = aws_subnet.private_app_b.id
-  route_table_id = aws_route_table.private_rt.id
+  route_table_id = aws_route_table.private_rt_b.id
 }
 
 resource "aws_route_table" "db_rt" {
@@ -177,7 +210,7 @@ resource "aws_route_table" "db_rt" {
 
   route {
     cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.nat.id
+    nat_gateway_id = aws_nat_gateway.nat_a.id
   }
 }
 
@@ -189,6 +222,66 @@ resource "aws_route_table_association" "db_a" {
 resource "aws_route_table_association" "db_b" {
   subnet_id      = aws_subnet.private_db_b.id
   route_table_id = aws_route_table.db_rt.id
+}
+
+#################################################
+# VPC Flow Logs — network-level audit trail
+#################################################
+
+resource "aws_cloudwatch_log_group" "vpc_flow_logs" {
+  name              = "/aws/vpc/flowlogs/smartgrid-${var.environment}"
+  retention_in_days = 30
+
+  tags = {
+    Name        = "smartgrid-${var.environment}-vpc-flow-logs"
+    Environment = var.environment
+    Owner       = "smartgrid-team"
+  }
+}
+
+resource "aws_iam_role" "vpc_flow_logs_role" {
+  name = "smartgrid-${var.environment}-vpc-flow-logs-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "vpc-flow-logs.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "vpc_flow_logs_policy" {
+  name = "vpc-flow-logs-write"
+  role = aws_iam_role.vpc_flow_logs_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents",
+        "logs:DescribeLogGroups",
+        "logs:DescribeLogStreams"
+      ]
+      Resource = "*"
+    }]
+  })
+}
+
+resource "aws_flow_log" "vpc" {
+  vpc_id          = aws_vpc.smartgrid_vpc.id
+  traffic_type    = "ALL"
+  iam_role_arn    = aws_iam_role.vpc_flow_logs_role.arn
+  log_destination = aws_cloudwatch_log_group.vpc_flow_logs.arn
+
+  tags = {
+    Name        = "smartgrid-${var.environment}-vpc-flow-log"
+    Environment = var.environment
+    Owner       = "smartgrid-team"
+  }
 }
 
 

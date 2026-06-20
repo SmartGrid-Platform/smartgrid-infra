@@ -9,7 +9,7 @@ resource "aws_instance" "bastion" {
   subnet_id                   = aws_subnet.public_a.id
   associate_public_ip_address = true
   vpc_security_group_ids      = [aws_security_group.bastion_sg.id]
-  key_name                    = "Likhitha-pem"
+  iam_instance_profile        = aws_iam_instance_profile.backend_profile.name
 
   tags = {
     Name = "smartgrid-${var.environment}-bastion"

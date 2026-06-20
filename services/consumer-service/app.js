@@ -42,9 +42,15 @@ app.use(rateLimiter);
 // Swagger Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
-// Health Check Endpoint
+// Health Check Endpoints
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'healthy', service: 'consumer-service', timestamp: new Date() });
+});
+app.get('/healthz', (req, res) => {
+  res.status(200).json({ status: 'healthy', service: 'consumer-service', timestamp: new Date() });
+});
+app.get('/ready', (req, res) => {
+  res.status(200).json({ status: 'ready', service: 'consumer-service', timestamp: new Date() });
 });
 
 // GET all consumers (Staff/Admin only)

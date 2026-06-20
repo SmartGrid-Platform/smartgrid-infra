@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-assistant-service
+  namespace: production
+  labels:
+    app: ai-assistant-service
+    environment: production
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ai-assistant-service
+  template:
+    metadata:
+      labels:
+        app: ai-assistant-service
+        environment: production
+    spec:
+      serviceAccountName: smartgrid-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+      containers:
+        - name: ai-assistant-service
+          image: 169720629031.dkr.ecr.ap-south-1.amazonaws.com/smartgrid-default-ai-assistant-service:latest
+          ports:
+            - containerPort: 4004
+          envFrom:
+            - configMapRef:
+                name: smartgrid-config
+            - secretRef:
+                name: smartgrid-secrets
+          env:
+            - name: PORT
+              value: "4004"
+            - name: BEDROCK_REGION
+              value: "us-east-1"
+            - name: BEDROCK_MODEL_PRIMARY
+              value: "us.amazon.nova-pro-v1:0"
+            - name: BEDROCK_MODEL_FALLBACK
+              value: "us.amazon.nova-lite-v1:0"
+            - name: CONSUMER_SERVICE_URL
+              value: "http://consumer-service:3002"
+            - name: BILLING_SERVICE_URL
+              value: "http://billing-service:3004"
+            - name: METER_SERVICE_URL
+              value: "http://meter-service:3003"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /api/assistant/healthz
+              port: 4004
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/assistant/ready
+              port: 4004
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3

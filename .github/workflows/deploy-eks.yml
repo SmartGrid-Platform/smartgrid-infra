@@ -191,8 +191,9 @@ jobs:
               eks.amazonaws.com/role-arn: "${{ steps.runtime.outputs.irsa_role_arn }}"
           EOF
 
-          helm upgrade --install smartgrid ./kubernetes/smartgrid \
-            --namespace default \
+          helm upgrade --install smartgrid ./helm/smartgrid \
+            --namespace production \
+            --create-namespace \
             --wait \
             --timeout 10m \
             -f /tmp/runtime-values.yaml \
@@ -210,7 +211,7 @@ jobs:
 
       - name: Show pod status
         if: always()
-        run: kubectl get pods -n default -o wide
+        run: kubectl get pods -n production -o wide
 
   # ─────────────────────────────────────────────────────────────
   # 4. Switch CloudFront origin to the EKS ALB
@@ -245,7 +246,7 @@ jobs:
           echo "Waiting for Load Balancer Controller to provision the ALB (up to 6 minutes)..."
           EKS_ALB_DNS=""
           for i in $(seq 1 36); do
-            EKS_ALB_DNS=$(kubectl get ingress smartgrid-ingress -n default \
+            EKS_ALB_DNS=$(kubectl get ingress smartgrid-ingress -n production \
               -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
             if [ -n "$EKS_ALB_DNS" ]; then
               echo "ALB ready: $EKS_ALB_DNS"
@@ -256,7 +257,7 @@ jobs:
           done
           if [ -z "$EKS_ALB_DNS" ]; then
             echo "ERROR: EKS ALB DNS was not assigned within 6 minutes."
-            kubectl describe ingress smartgrid-ingress -n default
+            kubectl describe ingress smartgrid-ingress -n production
             exit 1
           fi
           echo "eks_alb_dns=$EKS_ALB_DNS" >> $GITHUB_OUTPUT

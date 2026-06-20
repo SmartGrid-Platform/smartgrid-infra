@@ -64,9 +64,15 @@ const dispatchEmail = async (toEmail, subject, text) => {
 // Swagger Docs
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
-// Health Check
+// Health Check Endpoints
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'healthy', service: 'alert-service', timestamp: new Date() });
+});
+app.get('/healthz', (req, res) => {
+  res.status(200).json({ status: 'healthy', service: 'alert-service', timestamp: new Date() });
+});
+app.get('/ready', (req, res) => {
+  res.status(200).json({ status: 'ready', service: 'alert-service', timestamp: new Date() });
 });
 
 // GET all notifications (Staff/Admin only)

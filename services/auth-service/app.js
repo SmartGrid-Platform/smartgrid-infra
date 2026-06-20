@@ -46,9 +46,15 @@ app.use(rateLimiter);
 // Swagger Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
-// Health Check Endpoint
+// Health Check Endpoints
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'healthy', service: 'auth-service', timestamp: new Date() });
+});
+app.get('/healthz', (req, res) => {
+  res.status(200).json({ status: 'healthy', service: 'auth-service', timestamp: new Date() });
+});
+app.get('/ready', (req, res) => {
+  res.status(200).json({ status: 'ready', service: 'auth-service', timestamp: new Date() });
 });
 
 // Registration Endpoint

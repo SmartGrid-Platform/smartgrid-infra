@@ -15,6 +15,15 @@ const upload = multer({
   storage: multer.memoryStorage()
 });
 
+// Health check endpoints (required by K8s liveness/readiness probes)
+router.get('/healthz', (req, res) => {
+  res.status(200).json({ status: 'healthy', service: 'ai-assistant-service', timestamp: new Date() });
+});
+
+router.get('/ready', (req, res) => {
+  res.status(200).json({ status: 'ready', service: 'ai-assistant-service', timestamp: new Date() });
+});
+
 // Track sessions in memory for simple demonstration (in production use Redis/DB)
 const userSessions = new Map();
 

@@ -1,0 +1,122 @@
+environment: default
+
+adminName: "Admin"
+adminEmail: "admin@smartgrid.com"
+adminPassword: "Admin@123"
+awsRegion: ap-south-1
+imageTag: latest
+ecrRegistryUrl: "169720629031.dkr.ecr.ap-south-1.amazonaws.com"
+
+database:
+  host: "smartgrid-db.c123456789.ap-south-1.rds.amazonaws.com"
+  name: "smartgrid"
+  user: "smartgrid_user"
+  password: "password"
+
+jwtSecret: "a2b53cdd87431e5630283c448f72ee7b2c91b5da8d1234c9fb66b3f7efc4901f"
+
+ingress:
+  enabled: true
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+    alb.ingress.kubernetes.io/load-balancer-name: smartgrid-default-eks-alb
+  hosts:
+    - host: ""
+      paths:
+        - path: /api/auth
+          pathType: Prefix
+          serviceName: auth-service
+          servicePort: 3001
+        - path: /api/consumers
+          pathType: Prefix
+          serviceName: consumer-service
+          servicePort: 3002
+        - path: /api/meters
+          pathType: Prefix
+          serviceName: meter-service
+          servicePort: 3003
+        - path: /api/bills
+          pathType: Prefix
+          serviceName: billing-service
+          servicePort: 3004
+        - path: /api/tariffs
+          pathType: Prefix
+          serviceName: billing-service
+          servicePort: 3004
+        - path: /api/recharges
+          pathType: Prefix
+          serviceName: billing-service
+          servicePort: 3004
+        - path: /api/alerts
+          pathType: Prefix
+          serviceName: alert-service
+          servicePort: 3005
+        - path: /api/inspections
+          pathType: Prefix
+          serviceName: alert-service
+          servicePort: 3005
+        - path: /api/assistant
+          pathType: Prefix
+          serviceName: ai-assistant-service
+          servicePort: 4004
+
+serviceAccount:
+  create: true
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::169720629031:role/smartgrid-default-eks-pod-role"
+
+services:
+  auth-service:
+    port: 3001
+    replicaCount: 2
+    image: auth-service
+    env: {}
+
+  consumer-service:
+    port: 3002
+    replicaCount: 2
+    image: consumer-service
+    env: {}
+
+  meter-service:
+    port: 3003
+    replicaCount: 2
+    image: meter-service
+    env: {}
+    hpa:
+      minReplicas: 2
+      maxReplicas: 6
+      cpuThreshold: 70
+      memoryThreshold: 80
+
+  billing-service:
+    port: 3004
+    replicaCount: 2
+    image: billing-service
+    env: {}
+    hpa:
+      minReplicas: 2
+      maxReplicas: 6
+      cpuThreshold: 70
+      memoryThreshold: 80
+
+  alert-service:
+    port: 3005
+    replicaCount: 2
+    image: alert-service
+    env: {}
+
+  ai-assistant-service:
+    port: 4004
+    replicaCount: 2
+    image: ai-assistant-service
+    env:
+      BEDROCK_REGION: "us-east-1"
+      BEDROCK_MODEL_PRIMARY: "us.amazon.nova-pro-v1:0"
+      BEDROCK_MODEL_FALLBACK: "us.amazon.nova-lite-v1:0"
+      CONSUMER_SERVICE_URL: "http://consumer-service:3002"
+      BILLING_SERVICE_URL: "http://billing-service:3004"
+      METER_SERVICE_URL: "http://meter-service:3003"

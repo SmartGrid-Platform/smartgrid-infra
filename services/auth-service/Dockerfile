@@ -30,4 +30,5 @@ WORKDIR /app/services/auth-service
 
 EXPOSE 3001
 ENV NODE_ENV=production
+USER node
 CMD ["node", "server.js"]

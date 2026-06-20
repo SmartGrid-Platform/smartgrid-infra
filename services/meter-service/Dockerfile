@@ -30,4 +30,5 @@ WORKDIR /app/services/meter-service
 
 EXPOSE 3003
 ENV NODE_ENV=production
+USER node
 CMD ["node", "server.js"]

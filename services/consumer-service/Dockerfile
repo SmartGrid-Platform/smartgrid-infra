@@ -30,4 +30,5 @@ WORKDIR /app/services/consumer-service
 
 EXPOSE 3002
 ENV NODE_ENV=production
+USER node
 CMD ["node", "server.js"]

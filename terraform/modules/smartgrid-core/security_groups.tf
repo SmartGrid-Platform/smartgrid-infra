@@ -2,17 +2,10 @@
 # Security Groups
 #################################################
 
-# Bastion SG
+# Bastion SG — SSH removed; access via SSM Session Manager (no open port needed)
 resource "aws_security_group" "bastion_sg" {
   name   = "bastion-sg"
   vpc_id = aws_vpc.smartgrid_vpc.id
-
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
 
   egress {
     from_port   = 0

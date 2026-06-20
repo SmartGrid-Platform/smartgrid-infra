@@ -32,9 +32,15 @@ app.use((req, res, next) => {
 // Swagger Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
-// Health Check Endpoint
+// Health Check Endpoints
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'healthy', service: 'meter-service', timestamp: new Date() });
+});
+app.get('/healthz', (req, res) => {
+  res.status(200).json({ status: 'healthy', service: 'meter-service', timestamp: new Date() });
+});
+app.get('/ready', (req, res) => {
+  res.status(200).json({ status: 'ready', service: 'meter-service', timestamp: new Date() });
 });
 
 // GET all meters (Staff/Admin only)

@@ -30,4 +30,5 @@ WORKDIR /app/services/billing-service
 
 EXPOSE 3004
 ENV NODE_ENV=production
+USER node
 CMD ["node", "server.js"]

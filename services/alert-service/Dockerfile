@@ -30,4 +30,5 @@ WORKDIR /app/services/alert-service
 
 EXPOSE 3005
 ENV NODE_ENV=production
+USER node
 CMD ["node", "server.js"]

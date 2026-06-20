@@ -12,10 +12,11 @@ terraform {
   }
 
   backend "s3" {
-    bucket  = "smartgrid-tf-state-inky0p"
-    key     = "terraform.tfstate"
-    region  = "ap-south-1"
-    encrypt = true
+    bucket         = "smartgrid-tf-state-inky0p"
+    key            = "terraform.tfstate"
+    region         = "ap-south-1"
+    encrypt        = true
+    dynamodb_table = "smartgrid-tf-locks-inky0p"
   }
 }
 
