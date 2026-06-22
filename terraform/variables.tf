@@ -155,3 +155,10 @@ variable "k8s_namespace" {
   type        = string
   default     = "production"
 }
+
+# ── Notifications ──────────────────────────────────────────────────
+variable "notification_email" {
+  description = "Email address to receive SNS alert notifications (low-balance, disconnection)."
+  type        = string
+  default     = ""
+}

@@ -10,21 +10,16 @@ terraform {
       version = "~> 3.0"
     }
   }
-
-  backend "s3" {
-    bucket         = "smartgrid-tf-state-06vasp"
-    key            = "terraform.tfstate"
-    region         = "ap-south-1"
-    encrypt        = true
-    dynamodb_table = "smartgrid-tf-locks-06vasp"
-  }
+  # Backend is configured in backend.tf via -backend-config flags in CI.
+  # Run: cd terraform/backend-setup && terraform apply
+  # to create the S3 bucket and DynamoDB table first.
 }
 
 provider "aws" {
   region = var.aws_region
 }
 
-# Secondary provider for WAF in us-east-1 (CloudFront requirement)
+# Secondary provider for WAF (CloudFront WAF ACLs must live in us-east-1)
 provider "aws" {
   alias  = "us_east_1"
   region = "us-east-1"

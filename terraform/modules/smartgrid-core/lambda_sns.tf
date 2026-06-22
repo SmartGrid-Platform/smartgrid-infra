@@ -35,7 +35,7 @@ module "lambda_unit_calculator" {
   allowed_triggers = {
     AllowExecutionFromAPIGateway = {
       service    = "apigateway"
-      source_arn = "arn:aws:execute-api:ap-south-1::*"
+      source_arn = "arn:aws:execute-api:${var.aws_region}:${data.aws_caller_identity.current.account_id}:*"
     }
   }
 }
@@ -84,17 +84,17 @@ module "lambda_tariff_engine" {
   publish                = true
 }
 
+# SNS email subscriptions — only created when notification_email is set
 resource "aws_sns_topic_subscription" "low_balance_email" {
+  count     = var.notification_email != "" ? 1 : 0
   topic_arn = module.sns_low_balance.topic_arn
   protocol  = "email"
-  endpoint  = "likhithabhogyam03@gmail.com"
+  endpoint  = var.notification_email
 }
 
 resource "aws_sns_topic_subscription" "disconnection_email" {
+  count     = var.notification_email != "" ? 1 : 0
   topic_arn = module.sns_disconnection.topic_arn
   protocol  = "email"
-  endpoint  = "likhithabhogyam03@gmail.com"
+  endpoint  = var.notification_email
 }
-
-
-

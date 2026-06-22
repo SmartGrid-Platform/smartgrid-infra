@@ -28,6 +28,7 @@ module "smartgrid_core" {
   bedrock_primary_model  = var.bedrock_primary_model
   bedrock_fallback_model = var.bedrock_fallback_model
   k8s_namespace          = var.k8s_namespace
+  notification_email     = var.notification_email
 
   providers = {
     aws           = aws
