@@ -13,6 +13,11 @@ output "eks_cluster_name" {
   description = "The EKS cluster name"
 }
 
+output "cluster_name" {
+  value       = module.smartgrid_core.eks_cluster_name
+  description = "Alias for eks_cluster_name — used by bootstrap.yml"
+}
+
 output "eks_cluster_endpoint" {
   value       = module.smartgrid_core.eks_cluster_endpoint
   description = "The EKS cluster endpoint"
@@ -33,5 +38,22 @@ output "eks_pod_role_arn" {
   description = "IAM Role ARN for EKS pods (IRSA) — injected into Helm serviceAccount"
 }
 
+output "lbc_role_arn" {
+  value       = module.smartgrid_core.lbc_role_arn
+  description = "IAM Role ARN for the AWS Load Balancer Controller (IRSA)"
+}
 
+output "autoscaler_role_arn" {
+  value       = module.smartgrid_core.autoscaler_role_arn
+  description = "IAM Role ARN for the Cluster Autoscaler (IRSA)"
+}
 
+output "secrets_manager_secret_name" {
+  value       = module.smartgrid_core.secrets_manager_secret_name
+  description = "Name of the Secrets Manager secret containing all runtime config"
+}
+
+output "aws_region" {
+  value       = var.aws_region
+  description = "AWS region where the stack is deployed"
+}

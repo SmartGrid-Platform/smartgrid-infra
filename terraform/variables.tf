@@ -52,3 +52,34 @@ variable "enable_bastion" {
   type        = bool
   description = "Whether to create the bastion EC2 instance. Disable to save cost; use SSM Session Manager instead."
 }
+
+# ── Secrets (set via TF_VAR_* env vars — never in tfvars) ────────────
+variable "db_password" {
+  description = "RDS master password. Set via TF_VAR_db_password (GitHub Secret: TF_VAR_RDS_PASSWORD)."
+  type        = string
+  sensitive   = true
+}
+
+variable "jwt_secret" {
+  description = "JWT signing secret. Set via TF_VAR_jwt_secret (GitHub Secret: TF_VAR_JWT_SECRET)."
+  type        = string
+  sensitive   = true
+}
+
+variable "admin_name" {
+  description = "Bootstrap admin display name."
+  type        = string
+  default     = "Admin"
+}
+
+variable "admin_email" {
+  description = "Bootstrap admin email address."
+  type        = string
+  default     = "admin@smartgrid.com"
+}
+
+variable "admin_password" {
+  description = "Bootstrap admin password. Set via TF_VAR_admin_password (GitHub Secret: TF_VAR_ADMIN_PASSWORD)."
+  type        = string
+  sensitive   = true
+}

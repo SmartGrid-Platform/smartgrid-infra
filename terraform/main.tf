@@ -12,6 +12,11 @@ module "smartgrid_core" {
   eks_node_instance_type = var.eks_node_instance_type
   enable_guardduty       = var.enable_guardduty
   enable_bastion         = var.enable_bastion
+  db_password            = var.db_password
+  jwt_secret             = var.jwt_secret
+  admin_name             = var.admin_name
+  admin_email            = var.admin_email
+  admin_password         = var.admin_password
 
   providers = {
     aws           = aws

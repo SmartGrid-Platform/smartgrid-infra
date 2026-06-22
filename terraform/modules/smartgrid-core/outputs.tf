@@ -52,6 +52,17 @@ output "ecr_registry_url" {
   description = "The URL of the AWS ECR registry"
 }
 
+output "lbc_role_arn" {
+  value       = aws_iam_role.aws_load_balancer_controller.arn
+  description = "IAM Role ARN for the AWS Load Balancer Controller (IRSA)"
+}
 
+output "autoscaler_role_arn" {
+  value       = aws_iam_role.cluster_autoscaler.arn
+  description = "IAM Role ARN for the Cluster Autoscaler (IRSA)"
+}
 
-
+output "secrets_manager_secret_name" {
+  value       = aws_secretsmanager_secret.smartgrid_secret.name
+  description = "Name of the Secrets Manager secret containing all runtime config"
+}

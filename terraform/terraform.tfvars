@@ -9,3 +9,13 @@ asg_max_size           = 4
 eks_alb_dns            = ""
 enable_guardduty       = false
 enable_bastion         = false
+
+# Non-sensitive admin metadata (safe to commit)
+admin_name  = "Admin"
+admin_email = "admin@smartgrid.com"
+
+# SENSITIVE VARIABLES — do NOT add here.
+# Set these as GitHub Organization Secrets and map them in the CI workflow:
+#   TF_VAR_RDS_PASSWORD   → db_password
+#   TF_VAR_JWT_SECRET     → jwt_secret
+#   TF_VAR_ADMIN_PASSWORD → admin_password

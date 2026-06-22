@@ -115,6 +115,12 @@ resource "aws_eks_node_group" "nodes" {
     min_size     = var.asg_min_size
   }
 
+  # Cluster Autoscaler auto-discovery tags
+  tags = {
+    "k8s.io/cluster-autoscaler/enabled"                        = "true"
+    "k8s.io/cluster-autoscaler/${aws_eks_cluster.eks.name}"    = "owned"
+  }
+
   lifecycle {
     create_before_destroy = true
   }
@@ -166,6 +172,77 @@ resource "aws_iam_role" "eks_pod_role" {
 resource "aws_iam_role_policy_attachment" "eks_pod_policy_attach" {
   role       = aws_iam_role.eks_pod_role.name
   policy_arn = aws_iam_policy.backend_policy.arn
+}
+
+#################################################
+# Cluster Autoscaler — IRSA + IAM
+#################################################
+
+resource "aws_iam_policy" "cluster_autoscaler" {
+  name        = "smartgrid-${var.environment}-cluster-autoscaler"
+  description = "Permissions for Cluster Autoscaler to manage EC2 Auto Scaling Groups"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "autoscaling:DescribeAutoScalingGroups",
+          "autoscaling:DescribeAutoScalingInstances",
+          "autoscaling:DescribeLaunchConfigurations",
+          "autoscaling:DescribeScalingActivities",
+          "autoscaling:DescribeTags",
+          "ec2:DescribeLaunchTemplateVersions",
+          "ec2:DescribeInstanceTypes",
+          "eks:DescribeNodegroup"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "autoscaling:SetDesiredCapacity",
+          "autoscaling:TerminateInstanceInAutoScalingGroup"
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "autoscaling:ResourceTag/k8s.io/cluster-autoscaler/enabled"                        = "true"
+            "autoscaling:ResourceTag/k8s.io/cluster-autoscaler/${aws_eks_cluster.eks.name}" = "owned"
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role" "cluster_autoscaler" {
+  name = "smartgrid-${var.environment}-cluster-autoscaler"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Federated = aws_iam_openid_connect_provider.eks.arn
+        }
+        Action = "sts:AssumeRoleWithWebIdentity"
+        Condition = {
+          StringEquals = {
+            "${replace(aws_eks_cluster.eks.identity[0].oidc[0].issuer, "https://", "")}:sub" = "system:serviceaccount:kube-system:cluster-autoscaler"
+            "${replace(aws_eks_cluster.eks.identity[0].oidc[0].issuer, "https://", "")}:aud" = "sts.amazonaws.com"
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "cluster_autoscaler" {
+  role       = aws_iam_role.cluster_autoscaler.name
+  policy_arn = aws_iam_policy.cluster_autoscaler.arn
 }
 
 #################################################

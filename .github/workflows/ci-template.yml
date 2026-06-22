@@ -37,7 +37,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Compute image tag (short SHA)
         id: tag
@@ -75,7 +75,7 @@ jobs:
 
       # ── SECURITY SCAN ────────────────────────────────────────────────
       - name: Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref:  ${{ steps.image.outputs.name }}
           format:     table

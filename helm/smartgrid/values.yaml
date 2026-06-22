@@ -2,7 +2,7 @@ environment: default
 
 adminName: "Admin"
 adminEmail: "admin@smartgrid.com"
-adminPassword: "Admin@123"
+adminPassword: ""
 awsRegion: ap-south-1
 
 # imageTag is updated automatically by CI (main.yml update-helm-values job)
@@ -17,12 +17,12 @@ database:
   host: "smartgrid-db.c123456789.ap-south-1.rds.amazonaws.com"
   name: "smartgrid"
   user: "smartgrid_user"
-  # Only needed when secrets.create=true (direct Helm pipeline mode)
-  # Leave as placeholder when secrets.create=false (ArgoCD mode — bootstrap seeds the secret)
-  password: "REPLACE_WITH_SECRET_OR_LEAVE_FOR_ARGOCD_MODE"
+  # Injected at runtime via K8s Secret (bootstrap.yml seeds from Secrets Manager).
+  # Only needed when secrets.create=true — pass via --set or CI env, never commit.
+  password: ""
 
-# Only needed when secrets.create=true
-jwtSecret: "REPLACE_WITH_SECRET_OR_LEAVE_FOR_ARGOCD_MODE"
+# Injected at runtime. Only needed when secrets.create=true.
+jwtSecret: ""
 
 # secrets.create=true  → Helm creates the K8s Secret from values above (current pipeline)
 # secrets.create=false → bootstrap.yml pre-creates the secret from AWS Secrets Manager;
