@@ -183,6 +183,19 @@ jobs:
           echo "db_password=$DB_PASSWORD"     >> $GITHUB_OUTPUT
           echo "jwt_secret=$JWT_SECRET"       >> $GITHUB_OUTPUT
 
+      - name: Clean up stale release and pods
+        run: |
+          # Uninstall any previous (possibly failed) Helm release so old pods
+          # don't occupy the node's pod slots and block the migration job pod.
+          helm uninstall smartgrid -n production 2>/dev/null || true
+
+          # Delete stale hook jobs left by previous failed runs
+          kubectl delete jobs -n production --all --ignore-not-found=true 2>/dev/null || true
+
+          # Wait for pods to terminate before the fresh install starts
+          echo "Waiting for all pods in production to terminate..."
+          kubectl wait --for=delete pods --all -n production --timeout=120s 2>/dev/null || true
+
       - name: Helm upgrade / install
         run: |
           cat > /tmp/runtime-values.yaml << EOF
@@ -195,7 +208,7 @@ jobs:
             --namespace production \
             --create-namespace \
             --wait \
-            --timeout 10m \
+            --timeout 15m \
             -f /tmp/runtime-values.yaml \
             --set environment=${{ env.ENVIRONMENT }} \
             --set ecrRegistryUrl="${{ steps.runtime.outputs.ecr_registry }}" \
