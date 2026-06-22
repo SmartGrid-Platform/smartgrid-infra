@@ -156,6 +156,15 @@ jobs:
             --region ${{ secrets.AWS_REGION }} \
             --name ${{ env.CLUSTER_NAME }}
 
+      - name: Enable VPC CNI prefix delegation (raises t3.small pod limit 11→110)
+        run: |
+          kubectl set env daemonset aws-node \
+            -n kube-system \
+            ENABLE_PREFIX_DELEGATION=true \
+            WARM_PREFIX_TARGET=1 2>/dev/null || true
+          # Give aws-node pods 30s to restart with the new config
+          kubectl rollout status daemonset/aws-node -n kube-system --timeout=60s 2>/dev/null || true
+
       - name: Fetch runtime values from AWS
         id: runtime
         run: |
@@ -222,9 +231,45 @@ jobs:
             --set adminEmail="${{ secrets.ADMIN_EMAIL || 'admin@smartgrid.com' }}" \
             --set adminPassword="${{ secrets.ADMIN_PASSWORD || 'Admin@123' }}"
 
-      - name: Show pod status
+      - name: Diagnostics on failure
         if: always()
-        run: kubectl get pods -n production -o wide
+        run: |
+          echo "====== NODE CAPACITY ======"
+          kubectl describe nodes | grep -A 10 "Allocatable:\|Allocated resources:\|Non-terminated Pods:"
+
+          echo ""
+          echo "====== ALL PODS (all namespaces) ======"
+          kubectl get pods -A -o wide
+
+          echo ""
+          echo "====== PRODUCTION PODS DETAIL ======"
+          kubectl get pods -n production -o wide
+
+          echo ""
+          echo "====== EVENTS (last 30) ======"
+          kubectl get events -n production --sort-by=.lastTimestamp | tail -30
+
+          echo ""
+          echo "====== PENDING POD DESCRIBE ======"
+          for pod in $(kubectl get pods -n production --field-selector=status.phase=Pending -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+            echo "--- $pod ---"
+            kubectl describe pod "$pod" -n production | grep -A 5 "Events:\|Reason:\|Message:"
+          done
+
+          echo ""
+          echo "====== CRASHING POD LOGS ======"
+          for pod in $(kubectl get pods -n production -o jsonpath='{range .items[?(@.status.containerStatuses[0].state.waiting.reason=="CrashLoopBackOff")]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do
+            echo "--- logs: $pod ---"
+            kubectl logs "$pod" -n production --tail=50 2>/dev/null || kubectl logs "$pod" -n production --previous --tail=50 2>/dev/null || true
+          done
+
+          echo ""
+          echo "====== MIGRATION JOB ======"
+          kubectl get jobs -n production 2>/dev/null || true
+          for pod in $(kubectl get pods -n production -l app=smartgrid-db-migrate -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+            echo "--- migrate logs: $pod ---"
+            kubectl logs "$pod" -n production --tail=50 2>/dev/null || true
+          done
 
   # ─────────────────────────────────────────────────────────────
   # 4. Switch CloudFront origin to the EKS ALB
