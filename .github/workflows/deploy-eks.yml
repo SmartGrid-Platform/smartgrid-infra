@@ -12,8 +12,7 @@ name: CI/CD - Build, Push & Deploy to EKS
 on:
   push:
     branches:
-      - eksmigration
-      - main
+      - dev
   workflow_dispatch:
 
 jobs:

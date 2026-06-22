@@ -3,7 +3,6 @@ name: Infrastructure Pipeline (Terraform)
 on:
   push:
     branches:
-      - eksmigration
       - main
     paths:
       - 'terraform/**'
