@@ -1,9 +1,10 @@
 #################################################
 # Secrets Manager — single source of runtime truth
 #
-# ALL sensitive values come from Terraform variables (set via TF_VAR_* env vars).
-# Dynamic values (endpoints, ARNs, bucket names) are wired from Terraform resources.
-# Nothing is hardcoded here.
+# Every value comes from a Terraform variable.
+# Sensitive vars are set via TF_VAR_* env vars (GitHub Secrets).
+# Non-sensitive vars have defaults in variables.tf that can be
+# overridden with TF_VAR_* env vars or terraform.tfvars.
 #################################################
 
 resource "aws_secretsmanager_secret" "smartgrid_secret" {
@@ -18,9 +19,9 @@ resource "aws_secretsmanager_secret_version" "smartgrid_secret_val" {
   secret_string = jsonencode({
     # ── Database ───────────────────────────────
     DB_HOST     = aws_db_instance.database.address
-    DB_PORT     = "3306"
-    DB_NAME     = "smartgrid"
-    DB_USER     = "smartgrid_user"
+    DB_PORT     = tostring(var.db_port)
+    DB_NAME     = var.db_name
+    DB_USER     = var.db_user
     DB_PASSWORD = var.db_password
 
     # ── Auth ───────────────────────────────────
@@ -49,14 +50,17 @@ resource "aws_secretsmanager_secret_version" "smartgrid_secret_val" {
     SQS_DISCONNECTION_DLQ_URL = aws_sqs_queue.disconnection_dlq.url
 
     # ── AI / Bedrock ───────────────────────────
-    BEDROCK_MODEL_PRIMARY  = "us.amazon.nova-pro-v1:0"
-    BEDROCK_MODEL_FALLBACK = "us.amazon.nova-lite-v1:0"
+    BEDROCK_MODEL_PRIMARY  = var.bedrock_primary_model
+    BEDROCK_MODEL_FALLBACK = var.bedrock_fallback_model
 
     # ── Email (SMTP) ───────────────────────────
-    SMTP_HOST    = "smtp.mailtrap.io"
-    SMTP_PORT    = "2525"
-    SMTP_USER    = ""
-    SMTP_PASS    = ""
-    SENDER_EMAIL = "noreply@smartgrid.com"
+    SMTP_HOST    = var.smtp_host
+    SMTP_PORT    = var.smtp_port
+    SMTP_USER    = var.smtp_user
+    SMTP_PASS    = var.smtp_pass
+    SENDER_EMAIL = var.sender_email
+
+    # ── Kubernetes ─────────────────────────────
+    K8S_NAMESPACE = var.k8s_namespace
   })
 }

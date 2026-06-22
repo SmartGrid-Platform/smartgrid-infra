@@ -1,33 +1,40 @@
 environment: default
-
-adminName: "Admin"
-adminEmail: "admin@smartgrid.com"
-adminPassword: ""
-awsRegion: ap-south-1
+nodeEnv: "production"
+awsRegion: ""
 
 # imageTag is updated automatically by CI (main.yml update-helm-values job)
 imageTag: latest
 
-# REPLACE with your actual ECR registry URL after terraform apply
+# ECR registry URL — set at deploy time from: terraform output -raw ecr_registry_url
 # Format: <account-id>.dkr.ecr.<region>.amazonaws.com
-ecrRegistryUrl: "169720629031.dkr.ecr.ap-south-1.amazonaws.com"
+ecrRegistryUrl: ""
 
 database:
-  # REPLACE with your RDS endpoint from terraform output rds_endpoint
-  host: "smartgrid-db.c123456789.ap-south-1.rds.amazonaws.com"
+  # Populated at runtime from AWS Secrets Manager.
+  # In direct Helm mode (secrets.create=true / configmap.create=true),
+  # pass these via --set at deploy time. Never commit real values here.
+  host: ""
   name: "smartgrid"
   user: "smartgrid_user"
-  # Injected at runtime via K8s Secret (bootstrap.yml seeds from Secrets Manager).
-  # Only needed when secrets.create=true — pass via --set or CI env, never commit.
+  port: 3306
   password: ""
 
-# Injected at runtime. Only needed when secrets.create=true.
+# JWT secret — only needed when secrets.create=true. Never commit here.
 jwtSecret: ""
 
-# secrets.create=true  → Helm creates the K8s Secret from values above (current pipeline)
-# secrets.create=false → bootstrap.yml pre-creates the secret from AWS Secrets Manager;
-#                        ArgoCD application.yaml passes this as a helm parameter override
+# Admin identity — non-sensitive defaults; override via --set at deploy time
+adminName: ""
+adminEmail: ""
+adminPassword: ""
+
+# secrets.create=true  → Helm creates the K8s Secret from values (legacy pipeline)
+# secrets.create=false → bootstrap pre-creates from Secrets Manager; ArgoCD sets this
 secrets:
+  create: true
+
+# configmap.create=true  → Helm creates the ConfigMap from values (legacy pipeline)
+# configmap.create=false → bootstrap pre-creates from Secrets Manager; ArgoCD sets this
+configmap:
   create: true
 
 ingress:
@@ -37,7 +44,7 @@ ingress:
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
-    alb.ingress.kubernetes.io/load-balancer-name: smartgrid-default-eks-alb
+    alb.ingress.kubernetes.io/load-balancer-name: smartgrid-eks-alb
   hosts:
     - host: ""
       paths:
@@ -81,7 +88,7 @@ ingress:
 serviceAccount:
   create: true
   annotations:
-    eks.amazonaws.com/role-arn: "arn:aws:iam::169720629031:role/smartgrid-default-eks-pod-role"
+    eks.amazonaws.com/role-arn: ""
 
 services:
   auth-service:
@@ -129,9 +136,9 @@ services:
     replicaCount: 2
     image: ai-assistant-service
     env:
-      BEDROCK_REGION: "us-east-1"
-      BEDROCK_MODEL_PRIMARY: "us.amazon.nova-pro-v1:0"
-      BEDROCK_MODEL_FALLBACK: "us.amazon.nova-lite-v1:0"
-      CONSUMER_SERVICE_URL: "http://consumer-service:3002"
-      BILLING_SERVICE_URL: "http://billing-service:3004"
-      METER_SERVICE_URL: "http://meter-service:3003"
+      BEDROCK_REGION: ""
+      BEDROCK_MODEL_PRIMARY: ""
+      BEDROCK_MODEL_FALLBACK: ""
+      CONSUMER_SERVICE_URL: ""
+      BILLING_SERVICE_URL: ""
+      METER_SERVICE_URL: ""

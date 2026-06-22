@@ -1,15 +1,25 @@
+# ArgoCD Application — production environment
+#
+# This file is a reference template. The bootstrap.yml workflow generates
+# and applies the actual manifest dynamically. Do NOT apply this file directly.
+#
+# Variables substituted by bootstrap.yml:
+#   ${ARGOCD_NS}     — ArgoCD namespace (vars.ARGOCD_NAMESPACE or "argocd")
+#   ${GITHUB_ORG}    — GitHub org (vars.GITHUB_ORG)
+#   ${K8S_NAMESPACE} — App namespace (terraform output k8s_namespace)
+#
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: smartgrid-prod
-  namespace: <ARGOCD_NAMESPACE>
+  namespace: ${ARGOCD_NS}
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
 
   source:
-    repoURL: https://github.com/<YOUR-ORG>/smartgrid-helm.git
+    repoURL: https://github.com/${GITHUB_ORG}/smartgrid-helm.git
     targetRevision: prod
     path: helm/smartgrid
     helm:
@@ -19,10 +29,12 @@ spec:
       parameters:
         - name: secrets.create
           value: "false"
+        - name: configmap.create
+          value: "false"
 
   destination:
     server: https://kubernetes.default.svc
-    namespace: <APP_NAMESPACE>
+    namespace: ${K8S_NAMESPACE}
 
   syncPolicy:
     # Production sync is MANUAL — trigger from ArgoCD UI or argocd CLI

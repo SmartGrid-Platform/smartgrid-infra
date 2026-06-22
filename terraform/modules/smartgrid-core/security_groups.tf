@@ -68,8 +68,8 @@ resource "aws_security_group" "db_sg" {
 
   # Allow MySQL connections from backend microservices and EKS pods
   ingress {
-    from_port       = 3306
-    to_port         = 3306
+    from_port       = var.db_port
+    to_port         = var.db_port
     protocol        = "tcp"
     security_groups = [
       aws_security_group.backend_sg.id,

@@ -17,6 +17,17 @@ module "smartgrid_core" {
   admin_name             = var.admin_name
   admin_email            = var.admin_email
   admin_password         = var.admin_password
+  db_name                = var.db_name
+  db_user                = var.db_user
+  db_port                = var.db_port
+  smtp_host              = var.smtp_host
+  smtp_port              = var.smtp_port
+  smtp_user              = var.smtp_user
+  smtp_pass              = var.smtp_pass
+  sender_email           = var.sender_email
+  bedrock_primary_model  = var.bedrock_primary_model
+  bedrock_fallback_model = var.bedrock_fallback_model
+  k8s_namespace          = var.k8s_namespace
 
   providers = {
     aws           = aws

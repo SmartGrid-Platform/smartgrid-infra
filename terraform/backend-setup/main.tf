@@ -1,5 +1,10 @@
 provider "aws" {
-  region = "ap-south-1"
+  region = var.aws_region
+}
+
+variable "aws_region" {
+  description = "AWS region for the state bucket and lock table"
+  type        = string
 }
 
 resource "random_string" "suffix" {

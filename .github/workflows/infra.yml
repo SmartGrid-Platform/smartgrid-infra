@@ -19,6 +19,16 @@ on:
           - apply
           - destroy
 
+# ── Shared Terraform env vars ──────────────────────────────────────
+# Sensitive values come from GitHub Secrets (TF_VAR_* prefix).
+# Non-sensitive backend coordinates come from GitHub Variables.
+env:
+  TF_VAR_db_password:    ${{ secrets.TF_VAR_RDS_PASSWORD }}
+  TF_VAR_jwt_secret:     ${{ secrets.TF_VAR_JWT_SECRET }}
+  TF_VAR_admin_password: ${{ secrets.TF_VAR_ADMIN_PASSWORD }}
+  TF_VAR_smtp_user:      ${{ secrets.TF_VAR_SMTP_USER }}
+  TF_VAR_smtp_pass:      ${{ secrets.TF_VAR_SMTP_PASS }}
+
 jobs:
   # ─────────────────────────────────────────────────────────────
   # 1. Validate & Plan — runs automatically on every terraform/ change
@@ -26,31 +36,31 @@ jobs:
   terraform-plan:
     name: Terraform Validate & Plan
     runs-on: ubuntu-latest
-    env:
-      TF_VAR_db_password:    ${{ secrets.TF_VAR_RDS_PASSWORD }}
-      TF_VAR_jwt_secret:     ${{ secrets.TF_VAR_JWT_SECRET }}
-      TF_VAR_admin_password: ${{ secrets.TF_VAR_ADMIN_PASSWORD }}
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region:            ${{ secrets.AWS_REGION }}
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
+        uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.5.7
           terraform_wrapper: false
 
       - name: Terraform Init
         working-directory: ./terraform
-        run: terraform init
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="region=${{ secrets.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ vars.TF_STATE_LOCK_TABLE }}"
 
       - name: Terraform Format Check
         working-directory: ./terraform
@@ -65,13 +75,13 @@ jobs:
         working-directory: ./terraform
         run: |
           terraform plan -out=tfplan -no-color 2>&1 | tee plan-output.txt
-          echo "### Terraform Plan Output" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          cat plan-output.txt >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "### Terraform Plan Output" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat plan-output.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Plan Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: tfplan
           path: terraform/tfplan
@@ -79,39 +89,37 @@ jobs:
 
   # ─────────────────────────────────────────────────────────────
   # 2. Apply — requires manual trigger with action=apply
-  #    This satisfies the "manual approval" requirement:
-  #    someone must go to Actions → Run workflow → select "apply"
   # ─────────────────────────────────────────────────────────────
   terraform-apply:
     name: Terraform Apply
     runs-on: ubuntu-latest
     needs: terraform-plan
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply'
-    env:
-      TF_VAR_db_password:    ${{ secrets.TF_VAR_RDS_PASSWORD }}
-      TF_VAR_jwt_secret:     ${{ secrets.TF_VAR_JWT_SECRET }}
-      TF_VAR_admin_password: ${{ secrets.TF_VAR_ADMIN_PASSWORD }}
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region:            ${{ secrets.AWS_REGION }}
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
+        uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.5.7
           terraform_wrapper: false
 
       - name: Terraform Init
         working-directory: ./terraform
-        run: terraform init
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="region=${{ secrets.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ vars.TF_STATE_LOCK_TABLE }}"
 
       - name: Terraform Apply
         working-directory: ./terraform
@@ -120,14 +128,17 @@ jobs:
       - name: Show Outputs
         working-directory: ./terraform
         run: |
-          echo "### Infrastructure Outputs" >> $GITHUB_STEP_SUMMARY
-          echo "| Output | Value |"                                                          >> $GITHUB_STEP_SUMMARY
-          echo "|--------|-------|"                                                          >> $GITHUB_STEP_SUMMARY
-          echo "| EKS Cluster | $(terraform output -raw eks_cluster_name) |"               >> $GITHUB_STEP_SUMMARY
-          echo "| ECR Registry | $(terraform output -raw ecr_registry_url) |"              >> $GITHUB_STEP_SUMMARY
-          echo "| RDS Endpoint | $(terraform output -raw rds_endpoint) |"                  >> $GITHUB_STEP_SUMMARY
-          echo "| CloudFront URL | $(terraform output -raw cloudfront_url) |"              >> $GITHUB_STEP_SUMMARY
-          echo "| EKS Pod Role ARN | $(terraform output -raw eks_pod_role_arn) |"          >> $GITHUB_STEP_SUMMARY
+          echo "### Infrastructure Outputs" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Output | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| EKS Cluster      | $(terraform output -raw eks_cluster_name) |"          >> "$GITHUB_STEP_SUMMARY"
+          echo "| Namespace        | $(terraform output -raw k8s_namespace) |"             >> "$GITHUB_STEP_SUMMARY"
+          echo "| ECR Registry     | $(terraform output -raw ecr_registry_url) |"         >> "$GITHUB_STEP_SUMMARY"
+          echo "| RDS Endpoint     | $(terraform output -raw rds_endpoint) |"             >> "$GITHUB_STEP_SUMMARY"
+          echo "| CloudFront URL   | $(terraform output -raw cloudfront_url) |"           >> "$GITHUB_STEP_SUMMARY"
+          echo "| LBC Role ARN     | $(terraform output -raw lbc_role_arn) |"             >> "$GITHUB_STEP_SUMMARY"
+          echo "| CA Role ARN      | $(terraform output -raw autoscaler_role_arn) |"      >> "$GITHUB_STEP_SUMMARY"
+          echo "| Secret Name      | $(terraform output -raw secrets_manager_secret_name) |" >> "$GITHUB_STEP_SUMMARY"
 
   # ─────────────────────────────────────────────────────────────
   # 3. Destroy — requires manual trigger with action=destroy
@@ -137,31 +148,31 @@ jobs:
     runs-on: ubuntu-latest
     needs: terraform-plan
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy'
-    env:
-      TF_VAR_db_password:    ${{ secrets.TF_VAR_RDS_PASSWORD }}
-      TF_VAR_jwt_secret:     ${{ secrets.TF_VAR_JWT_SECRET }}
-      TF_VAR_admin_password: ${{ secrets.TF_VAR_ADMIN_PASSWORD }}
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region:            ${{ secrets.AWS_REGION }}
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
+        uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.5.7
           terraform_wrapper: false
 
       - name: Terraform Init
         working-directory: ./terraform
-        run: terraform init
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="region=${{ secrets.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ vars.TF_STATE_LOCK_TABLE }}"
 
       - name: Terraform Destroy
         working-directory: ./terraform

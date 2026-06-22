@@ -83,3 +83,75 @@ variable "enable_bastion" {
   description = "Whether to create the bastion EC2 instance. Disable to save cost; use SSM Session Manager instead."
   type        = bool
 }
+
+# ── Database config ────────────────────────────────────────────────
+variable "db_name" {
+  description = "RDS database schema name"
+  type        = string
+  default     = "smartgrid"
+}
+
+variable "db_user" {
+  description = "RDS master username"
+  type        = string
+  default     = "smartgrid_user"
+}
+
+variable "db_port" {
+  description = "RDS port number"
+  type        = number
+  default     = 3306
+}
+
+# ── Email (SMTP) ───────────────────────────────────────────────────
+variable "smtp_host" {
+  description = "SMTP relay hostname for outgoing email. Leave empty to disable."
+  type        = string
+  default     = ""
+}
+
+variable "smtp_port" {
+  description = "SMTP relay port"
+  type        = string
+  default     = ""
+}
+
+variable "smtp_user" {
+  description = "SMTP authentication username. Set via TF_VAR_smtp_user (GitHub Secret: TF_VAR_SMTP_USER)."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "smtp_pass" {
+  description = "SMTP authentication password. Set via TF_VAR_smtp_pass (GitHub Secret: TF_VAR_SMTP_PASS)."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "sender_email" {
+  description = "From address for application-generated emails"
+  type        = string
+  default     = ""
+}
+
+# ── AI / Bedrock ───────────────────────────────────────────────────
+variable "bedrock_primary_model" {
+  description = "AWS Bedrock primary model ID for the AI assistant"
+  type        = string
+  default     = "us.amazon.nova-pro-v1:0"
+}
+
+variable "bedrock_fallback_model" {
+  description = "AWS Bedrock fallback model ID (cheaper, used when primary is throttled)"
+  type        = string
+  default     = "us.amazon.nova-lite-v1:0"
+}
+
+# ── Kubernetes ─────────────────────────────────────────────────────
+variable "k8s_namespace" {
+  description = "Kubernetes namespace for SmartGrid services. Must match the IRSA trust policy."
+  type        = string
+  default     = "production"
+}

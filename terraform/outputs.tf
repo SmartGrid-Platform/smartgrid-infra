@@ -57,3 +57,8 @@ output "aws_region" {
   value       = var.aws_region
   description = "AWS region where the stack is deployed"
 }
+
+output "k8s_namespace" {
+  value       = module.smartgrid_core.k8s_namespace
+  description = "Kubernetes namespace for SmartGrid services"
+}

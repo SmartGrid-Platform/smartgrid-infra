@@ -66,3 +66,8 @@ output "secrets_manager_secret_name" {
   value       = aws_secretsmanager_secret.smartgrid_secret.name
   description = "Name of the Secrets Manager secret containing all runtime config"
 }
+
+output "k8s_namespace" {
+  value       = var.k8s_namespace
+  description = "Kubernetes namespace for SmartGrid services"
+}

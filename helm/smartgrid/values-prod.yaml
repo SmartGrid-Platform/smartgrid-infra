@@ -1,8 +1,12 @@
 # Production overrides — merged on top of values.yaml by ArgoCD application-prod.yaml
 environment: production
+nodeEnv: "production"
 
 secrets:
-  create: false   # bootstrap pre-creates secrets in prod namespace too
+  create: false   # bootstrap pre-creates secrets in the production namespace
+
+configmap:
+  create: false   # bootstrap pre-creates the ConfigMap from Secrets Manager values
 
 services:
   auth-service:

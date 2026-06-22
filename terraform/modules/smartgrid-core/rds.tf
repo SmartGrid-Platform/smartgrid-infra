@@ -20,9 +20,9 @@ resource "aws_db_instance" "database" {
   allocated_storage      = 20
   max_allocated_storage  = 50
   storage_type           = "gp2"
-  db_name                = "smartgrid"
-  username               = "smartgrid_user"
-  password               = "password" # Matches existing settings in services configs
+  db_name                = var.db_name
+  username               = var.db_user
+  password               = var.db_password
   db_subnet_group_name   = aws_db_subnet_group.db_subnet_group.name
   vpc_security_group_ids = [aws_security_group.db_sg.id]
   skip_final_snapshot    = true
@@ -32,6 +32,3 @@ resource "aws_db_instance" "database" {
     Name = "smartgrid-${var.environment}-rds-mysql"
   }
 }
-
-
-

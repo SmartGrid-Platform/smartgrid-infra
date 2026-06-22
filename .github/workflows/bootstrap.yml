@@ -1,48 +1,54 @@
 name: Bootstrap Cluster (ArgoCD + Controllers + Secrets)
 
-# Run this ONCE after `terraform apply` succeeds and before deploying services.
-# All values are read dynamically — nothing is hardcoded.
+# Run ONCE after terraform apply.
+# ALL runtime values are read from Terraform outputs — nothing is hardcoded.
+#
+# Required GitHub Variables (Settings → Secrets and variables → Actions → Variables):
+#   TF_STATE_BUCKET              S3 bucket from backend-setup terraform output
+#   TF_STATE_LOCK_TABLE          DynamoDB table from backend-setup terraform output
+#   GITHUB_ORG                   Your GitHub username or organization
+#   ARGOCD_CHART_VERSION         e.g. 7.7.3   (https://github.com/argoproj/argo-helm/releases)
+#   CLUSTER_AUTOSCALER_CHART_VER e.g. 9.43.2  (https://github.com/kubernetes/autoscaler/releases)
+#   CLUSTER_AUTOSCALER_IMAGE_TAG e.g. v1.31.0 (must match EKS Kubernetes minor version)
+#   ARGOCD_NAMESPACE             (optional, defaults to "argocd")
+#   LBC_CHART_VERSION            (optional, defaults to "1.8.1")
+#
+# Required GitHub Secrets:
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION
+#   GH_PAT (GitHub Personal Access Token with repo write scope)
 
 on:
-  workflow_dispatch:
-    inputs:
-      cluster_name:
-        description: 'EKS cluster name (copy from: terraform output eks_cluster_name)'
-        required: true
-      aws_region:
-        description: 'AWS region where the cluster lives (e.g. ap-south-1)'
-        required: true
-      app_namespace:
-        description: 'Kubernetes namespace for SmartGrid services'
-        required: false
-        default: 'production'
+  workflow_dispatch: {}   # no inputs — everything comes from terraform outputs
 
 jobs:
   bootstrap:
     name: Bootstrap EKS Cluster
     runs-on: ubuntu-latest
-    env:
-      CLUSTER_NAME:  ${{ github.event.inputs.cluster_name }}
-      AWS_REGION:    ${{ github.event.inputs.aws_region }}
-      APP_NAMESPACE: ${{ github.event.inputs.app_namespace }}
-      ARGOCD_NS:     ${{ vars.ARGOCD_NAMESPACE || 'argocd' }}
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # ── Validate required GitHub variables ───────────────────────────
-      - name: Validate required GitHub variables
+      # ── Validate required GitHub Variables ───────────────────────────
+      - name: Validate required GitHub Variables
         run: |
-          ORG="${{ vars.GITHUB_ORG }}"
-          if [ -z "$ORG" ]; then
-            echo "ERROR: vars.GITHUB_ORG is not set."
-            echo "Go to: Settings → Secrets and variables → Actions → Variables → New repository variable"
-            echo "Name: GITHUB_ORG   Value: <your-github-username-or-org>"
+          MISSING=""
+          [ -z "${{ vars.GITHUB_ORG }}"              ] && MISSING="$MISSING GITHUB_ORG"
+          [ -z "${{ vars.TF_STATE_BUCKET }}"         ] && MISSING="$MISSING TF_STATE_BUCKET"
+          [ -z "${{ vars.TF_STATE_LOCK_TABLE }}"     ] && MISSING="$MISSING TF_STATE_LOCK_TABLE"
+          [ -z "${{ vars.ARGOCD_CHART_VERSION }}"    ] && MISSING="$MISSING ARGOCD_CHART_VERSION"
+          [ -z "${{ vars.CLUSTER_AUTOSCALER_CHART_VER }}" ] && MISSING="$MISSING CLUSTER_AUTOSCALER_CHART_VER"
+          [ -z "${{ vars.CLUSTER_AUTOSCALER_IMAGE_TAG }}" ] && MISSING="$MISSING CLUSTER_AUTOSCALER_IMAGE_TAG"
+          if [ -n "$MISSING" ]; then
+            echo "ERROR: Missing required GitHub Variables:$MISSING"
+            echo "Go to Settings → Secrets and variables → Actions → Variables"
             exit 1
           fi
-          echo "GITHUB_ORG=$ORG" >> "$GITHUB_ENV"
-          echo "Using GitHub org: $ORG"
+          echo "GITHUB_ORG=${{ vars.GITHUB_ORG }}"           >> "$GITHUB_ENV"
+          echo "ARGOCD_NS=${{ vars.ARGOCD_NAMESPACE || 'argocd' }}" >> "$GITHUB_ENV"
+          echo "LBC_CHART_VERSION=${{ vars.LBC_CHART_VERSION || '1.8.1' }}" >> "$GITHUB_ENV"
+          echo "CA_CHART_VERSION=${{ vars.CLUSTER_AUTOSCALER_CHART_VER }}"  >> "$GITHUB_ENV"
+          echo "CA_IMAGE_TAG=${{ vars.CLUSTER_AUTOSCALER_IMAGE_TAG }}"       >> "$GITHUB_ENV"
 
       # ── AWS Credentials ──────────────────────────────────────────────
       - name: Configure AWS Credentials
@@ -50,12 +56,12 @@ jobs:
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          aws-region:            ${{ secrets.AWS_REGION }}
 
       # ── Install tools ────────────────────────────────────────────────
-      - name: Install jq, kubectl, helm
+      - name: Install jq, kubectl, helm, terraform
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq jq
+          sudo apt-get update -qq && sudo apt-get install -y -qq jq unzip
 
           KUBECTL_VER=$(curl -sSL https://dl.k8s.io/release/stable.txt)
           curl -sSLO "https://dl.k8s.io/release/${KUBECTL_VER}/bin/linux/amd64/kubectl"
@@ -63,74 +69,76 @@ jobs:
 
           curl -sSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
+          TF_VERSION="1.5.7"
+          curl -sSLO "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip"
+          unzip -q "terraform_${TF_VERSION}_linux_amd64.zip"
+          sudo mv terraform /usr/local/bin/terraform
+
+      # ── Read ALL values from Terraform outputs ───────────────────────
+      # This is the single source of truth. No values are reconstructed
+      # from naming conventions.
+      - name: Init Terraform and read outputs
+        id: tf
+        working-directory: ./terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="region=${{ secrets.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ vars.TF_STATE_LOCK_TABLE }}"
+
+          CLUSTER_NAME=$(  terraform output -raw cluster_name)
+          AWS_REGION_TF=$( terraform output -raw aws_region)
+          K8S_NAMESPACE=$( terraform output -raw k8s_namespace)
+          LBC_ROLE=$(      terraform output -raw lbc_role_arn)
+          CA_ROLE=$(       terraform output -raw autoscaler_role_arn)
+          SECRET_NAME=$(   terraform output -raw secrets_manager_secret_name)
+          VPC_ID=$(aws eks describe-cluster \
+            --name "$CLUSTER_NAME" \
+            --query 'cluster.resourcesVpcConfig.vpcId' \
+            --output text)
+
+          echo "CLUSTER_NAME=$CLUSTER_NAME"     >> "$GITHUB_ENV"
+          echo "AWS_REGION=$AWS_REGION_TF"      >> "$GITHUB_ENV"
+          echo "K8S_NAMESPACE=$K8S_NAMESPACE"   >> "$GITHUB_ENV"
+          echo "LBC_ROLE=$LBC_ROLE"             >> "$GITHUB_ENV"
+          echo "CA_ROLE=$CA_ROLE"               >> "$GITHUB_ENV"
+          echo "SECRET_NAME=$SECRET_NAME"       >> "$GITHUB_ENV"
+          echo "VPC_ID=$VPC_ID"                 >> "$GITHUB_ENV"
+
+          echo "Discovered:"
+          echo "  cluster:    $CLUSTER_NAME"
+          echo "  region:     $AWS_REGION_TF"
+          echo "  namespace:  $K8S_NAMESPACE"
+          echo "  vpc:        $VPC_ID"
+          echo "  lbc_role:   $LBC_ROLE"
+          echo "  ca_role:    $CA_ROLE"
+          echo "  secret:     $SECRET_NAME"
+
       - name: Update kubeconfig
         run: |
           aws eks update-kubeconfig \
             --region "$AWS_REGION" \
             --name   "$CLUSTER_NAME"
 
-      # ── Discover all dynamic values from AWS ─────────────────────────
-      # Derives: environment, LBC role ARN, CA role ARN, secret name, VPC ID.
-      # All names match the Terraform naming convention — no hardcoded values.
-      - name: Discover IAM roles and resources from AWS
-        run: |
-          # Infer environment from cluster name: smartgrid-<env>-cluster → <env>
-          ENVIRONMENT=$(echo "$CLUSTER_NAME" | sed 's/^smartgrid-\(.*\)-cluster$/\1/')
-          echo "ENVIRONMENT=$ENVIRONMENT" >> "$GITHUB_ENV"
-          echo "Derived environment: $ENVIRONMENT"
-
-          # LBC IAM role — Terraform creates it as "smartgrid-<env>-aws-lb-controller"
-          LBC_ROLE_ARN=$(aws iam get-role \
-            --role-name "smartgrid-${ENVIRONMENT}-aws-lb-controller" \
-            --query 'Role.Arn' --output text)
-          echo "LBC_ROLE_ARN=$LBC_ROLE_ARN" >> "$GITHUB_ENV"
-          echo "LBC role: $LBC_ROLE_ARN"
-
-          # Cluster Autoscaler IAM role
-          CA_ROLE_ARN=$(aws iam get-role \
-            --role-name "smartgrid-${ENVIRONMENT}-cluster-autoscaler" \
-            --query 'Role.Arn' --output text)
-          echo "CA_ROLE_ARN=$CA_ROLE_ARN" >> "$GITHUB_ENV"
-          echo "CA role: $CA_ROLE_ARN"
-
-          # Secrets Manager secret name — matches Terraform: "smartgrid-<env>/config"
-          SECRET_NAME="smartgrid-${ENVIRONMENT}/config"
-          echo "SECRET_NAME=$SECRET_NAME" >> "$GITHUB_ENV"
-          echo "Secret: $SECRET_NAME"
-
-          # VPC ID for LBC
-          VPC_ID=$(aws eks describe-cluster \
-            --name "$CLUSTER_NAME" \
-            --query 'cluster.resourcesVpcConfig.vpcId' \
-            --output text)
-          echo "VPC_ID=$VPC_ID" >> "$GITHUB_ENV"
-          echo "VPC: $VPC_ID"
-
       # ── ArgoCD ───────────────────────────────────────────────────────
       - name: Install ArgoCD
         run: |
           helm repo add argo https://argoproj.github.io/argo-helm
           helm repo update argo
-
           helm upgrade --install argocd argo/argo-cd \
             --namespace "$ARGOCD_NS" \
             --create-namespace \
-            --version 7.7.3 \
+            --version "${{ vars.ARGOCD_CHART_VERSION }}" \
             --set configs.params."server\.insecure"=true \
             --wait --timeout 10m
 
       - name: Wait for ArgoCD rollouts
         run: |
-          kubectl rollout status deployment/argocd-server \
-            -n "$ARGOCD_NS" --timeout=5m
-          kubectl rollout status deployment/argocd-repo-server \
-            -n "$ARGOCD_NS" --timeout=5m
-          kubectl rollout status deployment/argocd-applicationset-controller \
-            -n "$ARGOCD_NS" --timeout=5m
+          kubectl rollout status deployment/argocd-server              -n "$ARGOCD_NS" --timeout=5m
+          kubectl rollout status deployment/argocd-repo-server         -n "$ARGOCD_NS" --timeout=5m
+          kubectl rollout status deployment/argocd-applicationset-controller -n "$ARGOCD_NS" --timeout=5m
 
-      # Must wait for CRDs before applying Application manifests —
-      # without this, kubectl apply fails with "no kind Application found"
-      - name: Wait for ArgoCD Application CRD
+      - name: Wait for ArgoCD Application CRD to be established
         run: |
           kubectl wait --for=condition=Established \
             crd/applications.argoproj.io \
@@ -143,16 +151,15 @@ jobs:
             -n kube-system --dry-run=client -o yaml | kubectl apply -f -
           kubectl annotate serviceaccount aws-load-balancer-controller \
             -n kube-system \
-            eks.amazonaws.com/role-arn="$LBC_ROLE_ARN" \
+            eks.amazonaws.com/role-arn="$LBC_ROLE" \
             --overwrite
 
           helm repo add eks https://aws.github.io/eks-charts
           helm repo update eks
-
           helm upgrade --install aws-load-balancer-controller \
             eks/aws-load-balancer-controller \
             --namespace kube-system \
-            --version 1.8.1 \
+            --version "$LBC_CHART_VERSION" \
             --set clusterName="$CLUSTER_NAME" \
             --set serviceAccount.create=false \
             --set serviceAccount.name=aws-load-balancer-controller \
@@ -166,41 +173,44 @@ jobs:
         run: |
           helm repo add autoscaler https://kubernetes.github.io/autoscaler
           helm repo update autoscaler
-
-          # Chart version 9.43.2 pairs with image tag v1.31.0 (matches EKS 1.31)
           helm upgrade --install cluster-autoscaler \
             autoscaler/cluster-autoscaler \
             --namespace kube-system \
-            --version 9.43.2 \
+            --version "$CA_CHART_VERSION" \
             --set autoDiscovery.clusterName="$CLUSTER_NAME" \
             --set awsRegion="$AWS_REGION" \
-            --set image.tag=v1.31.0 \
-            --set rbac.serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="$CA_ROLE_ARN" \
+            --set image.tag="$CA_IMAGE_TAG" \
+            --set rbac.serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="$CA_ROLE" \
             --wait --timeout 5m
 
       # ── Namespace + K8s Secrets ──────────────────────────────────────
       - name: Create application namespace
         run: |
-          kubectl create namespace "$APP_NAMESPACE" \
+          kubectl create namespace "$K8S_NAMESPACE" \
             --dry-run=client -o yaml | kubectl apply -f -
 
-      - name: Seed K8s secrets from AWS Secrets Manager
+      - name: Seed K8s secrets and ConfigMap from AWS Secrets Manager
         run: |
           SECRET_JSON=$(aws secretsmanager get-secret-value \
             --secret-id  "$SECRET_NAME" \
             --query 'SecretString' \
             --output text)
 
-          DB_HOST=$(        echo "$SECRET_JSON" | jq -r '.DB_HOST')
-          DB_PASSWORD=$(    echo "$SECRET_JSON" | jq -r '.DB_PASSWORD')
-          JWT_SECRET=$(     echo "$SECRET_JSON" | jq -r '.JWT_SECRET')
-          ADMIN_NAME=$(     echo "$SECRET_JSON" | jq -r '.ADMIN_NAME')
-          ADMIN_EMAIL=$(    echo "$SECRET_JSON" | jq -r '.ADMIN_EMAIL')
-          ADMIN_PASSWORD=$( echo "$SECRET_JSON" | jq -r '.ADMIN_PASSWORD')
-          SM_AWS_REGION=$(  echo "$SECRET_JSON" | jq -r '.AWS_REGION')
+          # All values come from Secrets Manager — no literals
+          DB_HOST=$(         echo "$SECRET_JSON" | jq -r '.DB_HOST')
+          DB_PORT=$(         echo "$SECRET_JSON" | jq -r '.DB_PORT')
+          DB_NAME=$(         echo "$SECRET_JSON" | jq -r '.DB_NAME')
+          DB_USER=$(         echo "$SECRET_JSON" | jq -r '.DB_USER')
+          DB_PASSWORD=$(     echo "$SECRET_JSON" | jq -r '.DB_PASSWORD')
+          JWT_SECRET=$(      echo "$SECRET_JSON" | jq -r '.JWT_SECRET')
+          ADMIN_NAME=$(      echo "$SECRET_JSON" | jq -r '.ADMIN_NAME')
+          ADMIN_EMAIL=$(     echo "$SECRET_JSON" | jq -r '.ADMIN_EMAIL')
+          ADMIN_PASSWORD=$(  echo "$SECRET_JSON" | jq -r '.ADMIN_PASSWORD')
+          SM_AWS_REGION=$(   echo "$SECRET_JSON" | jq -r '.AWS_REGION')
+          SM_K8S_NAMESPACE=$(echo "$SECRET_JSON" | jq -r '.K8S_NAMESPACE')
 
           kubectl create secret generic smartgrid-secrets \
-            --namespace "$APP_NAMESPACE" \
+            --namespace "$K8S_NAMESPACE" \
             --from-literal=DB_PASSWORD="$DB_PASSWORD" \
             --from-literal=JWT_SECRET="$JWT_SECRET" \
             --from-literal=ADMIN_NAME="$ADMIN_NAME" \
@@ -209,42 +219,97 @@ jobs:
             --dry-run=client -o yaml | kubectl apply -f -
 
           kubectl create configmap smartgrid-config \
-            --namespace "$APP_NAMESPACE" \
+            --namespace "$K8S_NAMESPACE" \
             --from-literal=NODE_ENV="production" \
             --from-literal=DB_HOST="$DB_HOST" \
-            --from-literal=DB_NAME="smartgrid" \
-            --from-literal=DB_USER="smartgrid_user" \
-            --from-literal=DB_PORT="3306" \
+            --from-literal=DB_NAME="$DB_NAME" \
+            --from-literal=DB_USER="$DB_USER" \
+            --from-literal=DB_PORT="$DB_PORT" \
             --from-literal=AWS_REGION="${SM_AWS_REGION:-$AWS_REGION}" \
             --dry-run=client -o yaml | kubectl apply -f -
 
-          echo "Secrets and ConfigMap applied to namespace: $APP_NAMESPACE"
+          echo "Secret and ConfigMap applied in namespace: $K8S_NAMESPACE"
 
-      # ── ArgoCD Application manifests ─────────────────────────────────
+      # ── ArgoCD Application manifests (generated dynamically) ─────────
+      # Manifests are generated here from env vars — no placeholders committed to git.
       - name: Apply ArgoCD Application manifests
         run: |
-          # Replace all placeholders before applying
-          sed \
-            -e "s|<YOUR-ORG>|${GITHUB_ORG}|g" \
-            -e "s|<APP_NAMESPACE>|${APP_NAMESPACE}|g" \
-            -e "s|<ARGOCD_NAMESPACE>|${ARGOCD_NS}|g" \
-            argocd/application.yaml | kubectl apply -f -
+          # dev Application
+          kubectl apply -f - <<EOF
+          apiVersion: argoproj.io/v1alpha1
+          kind: Application
+          metadata:
+            name: smartgrid
+            namespace: ${ARGOCD_NS}
+            finalizers:
+              - resources-finalizer.argocd.argoproj.io
+          spec:
+            project: default
+            source:
+              repoURL: https://github.com/${GITHUB_ORG}/smartgrid-helm.git
+              targetRevision: dev
+              path: helm/smartgrid
+              helm:
+                valueFiles:
+                  - values.yaml
+                parameters:
+                  - name: secrets.create
+                    value: "false"
+                  - name: configmap.create
+                    value: "false"
+            destination:
+              server: https://kubernetes.default.svc
+              namespace: ${K8S_NAMESPACE}
+            syncPolicy:
+              automated:
+                prune: true
+                selfHeal: true
+              syncOptions:
+                - CreateNamespace=true
+                - ServerSideApply=true
+                - ApplyOutOfSyncOnly=true
+          EOF
 
-          sed \
-            -e "s|<YOUR-ORG>|${GITHUB_ORG}|g" \
-            -e "s|<APP_NAMESPACE>|${APP_NAMESPACE}|g" \
-            -e "s|<ARGOCD_NAMESPACE>|${ARGOCD_NS}|g" \
-            argocd/application-prod.yaml | kubectl apply -f -
+          # prod Application (manual sync)
+          kubectl apply -f - <<EOF
+          apiVersion: argoproj.io/v1alpha1
+          kind: Application
+          metadata:
+            name: smartgrid-prod
+            namespace: ${ARGOCD_NS}
+            finalizers:
+              - resources-finalizer.argocd.argoproj.io
+          spec:
+            project: default
+            source:
+              repoURL: https://github.com/${GITHUB_ORG}/smartgrid-helm.git
+              targetRevision: prod
+              path: helm/smartgrid
+              helm:
+                valueFiles:
+                  - values.yaml
+                  - values-prod.yaml
+                parameters:
+                  - name: secrets.create
+                    value: "false"
+                  - name: configmap.create
+                    value: "false"
+            destination:
+              server: https://kubernetes.default.svc
+              namespace: ${K8S_NAMESPACE}
+            syncPolicy:
+              syncOptions:
+                - CreateNamespace=true
+                - ServerSideApply=true
+          EOF
 
       - name: Wait for ArgoCD sync
         run: |
           echo "Waiting for smartgrid to reach Synced+Healthy (up to 5 min)..."
           for i in $(seq 1 30); do
-            STATUS=$(kubectl get application smartgrid \
-              -n "$ARGOCD_NS" \
+            STATUS=$(kubectl get application smartgrid -n "$ARGOCD_NS" \
               -o jsonpath='{.status.sync.status}' 2>/dev/null || echo "Unknown")
-            HEALTH=$(kubectl get application smartgrid \
-              -n "$ARGOCD_NS" \
+            HEALTH=$(kubectl get application smartgrid -n "$ARGOCD_NS" \
               -o jsonpath='{.status.health.status}' 2>/dev/null || echo "Unknown")
             echo "  Attempt $i/30 — Sync: $STATUS  Health: $HEALTH"
             if [ "$STATUS" = "Synced" ] && [ "$HEALTH" = "Healthy" ]; then
@@ -258,13 +323,14 @@ jobs:
       - name: Bootstrap summary
         if: always()
         run: |
-          echo "### Bootstrap Complete" >> "$GITHUB_STEP_SUMMARY"
-          echo ""                       >> "$GITHUB_STEP_SUMMARY"
-          echo "| Component | Status |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|-----------|--------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| ArgoCD | $(kubectl rollout status deployment/argocd-server -n "$ARGOCD_NS" --timeout=10s 2>&1 | tail -1) |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| LBC | $(kubectl rollout status deployment/aws-load-balancer-controller -n kube-system --timeout=10s 2>&1 | tail -1) |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Cluster Autoscaler | $(kubectl rollout status deployment/cluster-autoscaler-aws-cluster-autoscaler -n kube-system --timeout=10s 2>&1 | tail -1) |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Pods ($APP_NAMESPACE) | $(kubectl get pods -n "$APP_NAMESPACE" --no-headers 2>/dev/null | wc -l) pods found |" >> "$GITHUB_STEP_SUMMARY"
-          echo ""                       >> "$GITHUB_STEP_SUMMARY"
+          echo "### Bootstrap Complete"                                             >> "$GITHUB_STEP_SUMMARY"
+          echo ""                                                                   >> "$GITHUB_STEP_SUMMARY"
+          echo "| Component | Status |"                                            >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----------|--------|"                                            >> "$GITHUB_STEP_SUMMARY"
+          echo "| ArgoCD           | $(kubectl rollout status deployment/argocd-server -n "$ARGOCD_NS" --timeout=10s 2>&1 | tail -1) |"                                                         >> "$GITHUB_STEP_SUMMARY"
+          echo "| LBC              | $(kubectl rollout status deployment/aws-load-balancer-controller -n kube-system --timeout=10s 2>&1 | tail -1) |"                                           >> "$GITHUB_STEP_SUMMARY"
+          echo "| Cluster Autoscaler | $(kubectl rollout status deployment/cluster-autoscaler-aws-cluster-autoscaler -n kube-system --timeout=10s 2>&1 | tail -1) |"                           >> "$GITHUB_STEP_SUMMARY"
+          echo "| Pods ($K8S_NAMESPACE) | $(kubectl get pods -n "$K8S_NAMESPACE" --no-headers 2>/dev/null | wc -l) pods found |"                                                               >> "$GITHUB_STEP_SUMMARY"
+          echo ""                                                                   >> "$GITHUB_STEP_SUMMARY"
+          echo "**Cluster**: \`$CLUSTER_NAME\`"                                    >> "$GITHUB_STEP_SUMMARY"
           echo "**ArgoCD UI**: \`kubectl port-forward svc/argocd-server -n $ARGOCD_NS 8080:80\`" >> "$GITHUB_STEP_SUMMARY"
