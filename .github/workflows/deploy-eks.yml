@@ -247,6 +247,64 @@ jobs:
             --set adminEmail="${{ secrets.ADMIN_EMAIL || 'admin@smartgrid.com' }}" \
             --set adminPassword="${{ secrets.ADMIN_PASSWORD || 'Admin@123' }}"
 
+      - name: Verify rollout status
+        run: |
+          SERVICES="auth-service consumer-service meter-service billing-service alert-service ai-assistant-service"
+          for svc in $SERVICES; do
+            echo "--- Checking rollout: $svc ---"
+            kubectl rollout status deployment/$svc -n production --timeout=5m
+          done
+          echo "All deployments rolled out successfully."
+
+      - name: Smoke tests
+        run: |
+          # Run a temporary curl pod inside the cluster to verify each service
+          # health endpoint responds 200 without needing the ALB to be provisioned.
+          SERVICES="auth-service:3001 consumer-service:3002 meter-service:3003 billing-service:3004 alert-service:3005"
+          FAILED=0
+          for svc_port in $SERVICES; do
+            SVC=$(echo $svc_port | cut -d: -f1)
+            PORT=$(echo $svc_port | cut -d: -f2)
+            echo "--- Smoke test: $SVC /healthz ---"
+            STATUS=$(kubectl run smoke-$SVC \
+              --image=curlimages/curl:latest \
+              --restart=Never \
+              -n production \
+              --rm \
+              -i \
+              --timeout=30s \
+              -- curl -s -o /dev/null -w "%{http_code}" \
+                 "http://${SVC}:${PORT}/healthz" 2>/dev/null || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "  $SVC: OK (200)"
+            else
+              echo "  $SVC: FAILED (got $STATUS)"
+              FAILED=1
+            fi
+          done
+          # ai-assistant uses a different path
+          echo "--- Smoke test: ai-assistant-service /api/assistant/healthz ---"
+          STATUS=$(kubectl run smoke-ai \
+            --image=curlimages/curl:latest \
+            --restart=Never \
+            -n production \
+            --rm \
+            -i \
+            --timeout=30s \
+            -- curl -s -o /dev/null -w "%{http_code}" \
+               "http://ai-assistant-service:4004/api/assistant/healthz" 2>/dev/null || echo "000")
+          if [ "$STATUS" = "200" ]; then
+            echo "  ai-assistant-service: OK (200)"
+          else
+            echo "  ai-assistant-service: FAILED (got $STATUS)"
+            FAILED=1
+          fi
+          if [ "$FAILED" -eq 1 ]; then
+            echo "One or more smoke tests failed."
+            exit 1
+          fi
+          echo "All smoke tests passed."
+
       - name: Diagnostics on failure
         if: always()
         run: |
