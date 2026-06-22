@@ -33,5 +33,6 @@ WORKDIR /app/services/ai-assistant-service
 
 EXPOSE 4004
 ENV NODE_ENV=production
-USER node
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+USER appuser
 CMD ["node", "server.js"]

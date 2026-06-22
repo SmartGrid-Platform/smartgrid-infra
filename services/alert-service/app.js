@@ -18,7 +18,13 @@ app.use(morgan('dev'));
 // Custom Rate Limiter
 const rateLimitMap = new Map();
 app.use((req, res, next) => {
-  if (req.path === '/health') return next();
+  if (
+    req.path === '/health' ||
+    req.path === '/healthz' ||
+    req.path === '/ready'
+  ) {
+    return next();
+  }
   const ip = req.ip;
   const now = Date.now();
   if (!rateLimitMap.has(ip)) rateLimitMap.set(ip, []);

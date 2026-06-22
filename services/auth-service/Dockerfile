@@ -30,5 +30,6 @@ WORKDIR /app/services/auth-service
 
 EXPOSE 3001
 ENV NODE_ENV=production
-USER node
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+USER appuser
 CMD ["node", "server.js"]

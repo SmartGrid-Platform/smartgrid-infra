@@ -30,5 +30,6 @@ WORKDIR /app/services/consumer-service
 
 EXPOSE 3002
 ENV NODE_ENV=production
-USER node
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+USER appuser
 CMD ["node", "server.js"]
