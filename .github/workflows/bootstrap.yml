@@ -6,7 +6,7 @@ name: Bootstrap Cluster (ArgoCD + Controllers + Secrets)
 # Required GitHub Variables (Settings → Secrets and variables → Actions → Variables):
 #   TF_STATE_BUCKET              S3 bucket from backend-setup terraform output
 #   TF_STATE_LOCK_TABLE          DynamoDB table from backend-setup terraform output
-#   GITHUB_ORG                   Your GitHub username or organization
+#   ORG_GITHUB                   Your GitHub username or organization
 #   ARGOCD_CHART_VERSION         e.g. 7.7.3   (https://github.com/argoproj/argo-helm/releases)
 #   CLUSTER_AUTOSCALER_CHART_VER e.g. 9.43.2  (https://github.com/kubernetes/autoscaler/releases)
 #   CLUSTER_AUTOSCALER_IMAGE_TAG e.g. v1.31.0 (must match EKS Kubernetes minor version)
@@ -39,7 +39,7 @@ jobs:
       - name: Validate required GitHub Variables
         run: |
           MISSING=""
-          [ -z "${{ vars.GITHUB_ORG }}"              ] && MISSING="$MISSING GITHUB_ORG"
+          [ -z "${{ vars.ORG_GITHUB }}"              ] && MISSING="$MISSING GITHUB_ORG"
           [ -z "${{ vars.TF_STATE_BUCKET }}"         ] && MISSING="$MISSING TF_STATE_BUCKET"
           [ -z "${{ vars.TF_STATE_LOCK_TABLE }}"     ] && MISSING="$MISSING TF_STATE_LOCK_TABLE"
           [ -z "${{ vars.ARGOCD_CHART_VERSION }}"    ] && MISSING="$MISSING ARGOCD_CHART_VERSION"
@@ -50,7 +50,7 @@ jobs:
             echo "Go to Settings → Secrets and variables → Actions → Variables"
             exit 1
           fi
-          echo "GITHUB_ORG=${{ vars.GITHUB_ORG }}" >> "$GITHUB_ENV"
+          echo "GITHUB_ORG=${{ vars.ORG_GITHUB }}" >> "$GITHUB_ENV"
 
           # Apply bash-level defaults for optional variables so we never rely on
           # GitHub Actions || syntax, which is not reliably supported in all contexts.

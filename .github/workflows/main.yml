@@ -117,11 +117,11 @@ jobs:
     if: success()
 
     steps:
-      - name: Validate GITHUB_ORG variable
+      - name: Validate ORG_GITHUB variable
         run: |
-          ORG="${{ vars.GITHUB_ORG }}"
+          ORG="${{ vars.ORG_GITHUB }}"
           if [ -z "$ORG" ]; then
-            echo "ERROR: vars.GITHUB_ORG is not set."
+            echo "ERROR: vars.ORG_GITHUB is not set."
             echo "Add it under: Settings → Secrets and variables → Actions → Variables"
             exit 1
           fi
@@ -134,7 +134,7 @@ jobs:
       - name: Checkout smartgrid-helm repo (dev branch)
         uses: actions/checkout@v4
         with:
-          repository: ${{ vars.GITHUB_ORG }}/smartgrid-helm
+          repository: ${{ vars.ORG_GITHUB }}/smartgrid-helm
           ref: dev
           token: ${{ secrets.GH_PAT }}
           path: helm-repo
