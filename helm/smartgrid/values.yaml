@@ -71,47 +71,47 @@ serviceAccount:
 services:
   auth-service:
     port: 3001
-    replicaCount: 2
+    replicaCount: 1
     image: auth-service
     env: {}
 
   consumer-service:
     port: 3002
-    replicaCount: 2
+    replicaCount: 1
     image: consumer-service
     env: {}
 
   meter-service:
     port: 3003
-    replicaCount: 2
+    replicaCount: 1
     image: meter-service
     env: {}
     hpa:
-      minReplicas: 2
+      minReplicas: 1
       maxReplicas: 6
       cpuThreshold: 70
       memoryThreshold: 80
 
   billing-service:
     port: 3004
-    replicaCount: 2
+    replicaCount: 1
     image: billing-service
     env: {}
     hpa:
-      minReplicas: 2
+      minReplicas: 1
       maxReplicas: 6
       cpuThreshold: 70
       memoryThreshold: 80
 
   alert-service:
     port: 3005
-    replicaCount: 2
+    replicaCount: 1
     image: alert-service
     env: {}
 
   ai-assistant-service:
     port: 4004
-    replicaCount: 2
+    replicaCount: 1
     image: ai-assistant-service
     env:
       BEDROCK_REGION: "us-east-1"
