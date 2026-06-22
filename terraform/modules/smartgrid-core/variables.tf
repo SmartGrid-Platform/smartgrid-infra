@@ -37,3 +37,18 @@ variable "eks_alb_dns" {
   description = "DNS hostname of the ALB created by the EKS Load Balancer Controller. Empty on first apply; set after Helm deploy to switch CloudFront to EKS."
   type        = string
 }
+
+variable "eks_node_instance_type" {
+  description = "EC2 instance type for EKS worker nodes (must be at least t3.small — t2.micro is too small for EKS)"
+  type        = string
+}
+
+variable "enable_guardduty" {
+  description = "Whether to enable GuardDuty. Set to false on new accounts without a payment method."
+  type        = bool
+}
+
+variable "enable_bastion" {
+  description = "Whether to create the bastion EC2 instance. Disable to save cost; use SSM Session Manager instead."
+  type        = bool
+}

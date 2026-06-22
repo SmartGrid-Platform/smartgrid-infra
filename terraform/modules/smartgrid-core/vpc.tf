@@ -112,14 +112,10 @@ resource "aws_internet_gateway" "igw" {
 }
 
 #################################################
-# NAT Gateways — one per AZ for high availability
+# NAT Gateway — single NAT (cost-efficient for demo environment)
 #################################################
 
 resource "aws_eip" "nat_eip_a" {
-  domain = "vpc"
-}
-
-resource "aws_eip" "nat_eip_b" {
   domain = "vpc"
 }
 
@@ -128,18 +124,7 @@ resource "aws_nat_gateway" "nat_a" {
   subnet_id     = aws_subnet.public_a.id
 
   tags = {
-    Name = "smartgrid-${var.environment}-nat-a"
-  }
-
-  depends_on = [aws_internet_gateway.igw]
-}
-
-resource "aws_nat_gateway" "nat_b" {
-  allocation_id = aws_eip.nat_eip_b.id
-  subnet_id     = aws_subnet.public_b.id
-
-  tags = {
-    Name = "smartgrid-${var.environment}-nat-b"
+    Name = "smartgrid-${var.environment}-nat"
   }
 
   depends_on = [aws_internet_gateway.igw]
@@ -168,7 +153,7 @@ resource "aws_route_table_association" "public_b" {
   route_table_id = aws_route_table.public_rt.id
 }
 
-# Private route table per AZ so each AZ's NAT is used locally
+# Single private route table — both AZs route through the one NAT
 resource "aws_route_table" "private_rt_a" {
   vpc_id = aws_vpc.smartgrid_vpc.id
 
@@ -178,20 +163,7 @@ resource "aws_route_table" "private_rt_a" {
   }
 
   tags = {
-    Name = "smartgrid-${var.environment}-private-rt-a"
-  }
-}
-
-resource "aws_route_table" "private_rt_b" {
-  vpc_id = aws_vpc.smartgrid_vpc.id
-
-  route {
-    cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.nat_b.id
-  }
-
-  tags = {
-    Name = "smartgrid-${var.environment}-private-rt-b"
+    Name = "smartgrid-${var.environment}-private-rt"
   }
 }
 
@@ -202,7 +174,7 @@ resource "aws_route_table_association" "private_app_a" {
 
 resource "aws_route_table_association" "private_app_b" {
   subnet_id      = aws_subnet.private_app_b.id
-  route_table_id = aws_route_table.private_rt_b.id
+  route_table_id = aws_route_table.private_rt_a.id
 }
 
 resource "aws_route_table" "db_rt" {

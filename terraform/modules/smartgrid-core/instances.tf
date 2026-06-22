@@ -4,6 +4,7 @@
 
 # 1. Bastion Host (Public Access for maintenance)
 resource "aws_instance" "bastion" {
+  count                       = var.enable_bastion ? 1 : 0
   ami                         = "ami-07a00cf47dbbc844c"
   instance_type               = var.instance_type
   subnet_id                   = aws_subnet.public_a.id

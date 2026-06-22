@@ -100,10 +100,14 @@ resource "aws_iam_role_policy_attachment" "eks_registry_policy" {
 
 # 4. EKS Node Group (deploy in Private App Subnets)
 resource "aws_eks_node_group" "nodes" {
-  cluster_name    = aws_eks_cluster.eks.name
-  node_group_name = "smartgrid-${var.environment}-node-group"
-  node_role_arn   = aws_iam_role.eks_node_role.arn
-  subnet_ids      = [aws_subnet.private_app_a.id, aws_subnet.private_app_b.id]
+  cluster_name           = aws_eks_cluster.eks.name
+  node_group_name_prefix = "smartgrid-${var.environment}-nodes-"
+  node_role_arn          = aws_iam_role.eks_node_role.arn
+  subnet_ids             = [aws_subnet.private_app_a.id, aws_subnet.private_app_b.id]
+
+  # SPOT avoids the On-Demand Free-Tier block on new AWS accounts and is ~70% cheaper
+  capacity_type  = "SPOT"
+  instance_types = [var.eks_node_instance_type]
 
   scaling_config {
     desired_size = var.asg_min_size
@@ -111,17 +115,14 @@ resource "aws_eks_node_group" "nodes" {
     min_size     = var.asg_min_size
   }
 
-  instance_types = [var.instance_type == "t2.micro" ? "t3.medium" : var.instance_type]
+  lifecycle {
+    create_before_destroy = true
+  }
 
   depends_on = [
     aws_iam_role_policy_attachment.eks_node_policy,
     aws_iam_role_policy_attachment.eks_cni_policy,
     aws_iam_role_policy_attachment.eks_registry_policy,
-    # Nodes live in private subnets and must reach the EKS public API endpoint
-    # via the NAT gateway to complete bootstrap. Without these explicit deps,
-    # Terraform can race the node group creation ahead of the NAT/route setup
-    # (especially when the cluster already exists from a prior run), causing
-    # NodeCreationFailure: Instances failed to join the kubernetes cluster.
     aws_route_table_association.private_app_a,
     aws_route_table_association.private_app_b
   ]

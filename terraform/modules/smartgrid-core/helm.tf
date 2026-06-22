@@ -276,7 +276,15 @@ resource "null_resource" "install_lbc" {
       Write-Host "--- Installing AWS Load Balancer Controller via Helm ---"
       helm repo add eks https://aws.github.io/eks-charts 2>$null
       helm repo update eks
-      helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller --namespace kube-system --version 1.6.2 --set clusterName=${aws_eks_cluster.eks.name} --set serviceAccount.create=false --set serviceAccount.name=aws-load-balancer-controller --set region=${var.aws_region} --set vpcId=${aws_vpc.smartgrid_vpc.id} --wait --timeout 5m
+
+      # Silently uninstall any previous release (failed, partial, or none).
+      # Errors are suppressed here because "release not found" is not a real failure.
+      $ErrorActionPreference = 'SilentlyContinue'
+      helm uninstall aws-load-balancer-controller -n kube-system 2>$null
+      $ErrorActionPreference = 'Stop'
+      Start-Sleep 10
+
+      helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller --namespace kube-system --version 1.8.1 --set clusterName=${aws_eks_cluster.eks.name} --set serviceAccount.create=false --set serviceAccount.name=aws-load-balancer-controller --set region=${var.aws_region} --set vpcId=${aws_vpc.smartgrid_vpc.id} --wait --timeout 10m
       if (-not $?) { exit 1 }
 
       Write-Host "--- LBC installed successfully ---"

@@ -8,8 +8,8 @@ output "vpc_id" {
 }
 
 output "bastion_public_ip" {
-  value       = aws_instance.bastion.public_ip
-  description = "Public IP address of the Bastion Host"
+  value       = length(aws_instance.bastion) > 0 ? aws_instance.bastion[0].public_ip : ""
+  description = "Public IP address of the Bastion Host (empty when enable_bastion = false)"
 }
 
 output "cloudfront_domain_name" {

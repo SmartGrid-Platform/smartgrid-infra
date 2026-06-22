@@ -67,6 +67,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "bills_bucket_lifecycle" {
     id     = "bills-tiering"
     status = "Enabled"
 
+    filter {}
+
     transition {
       days          = 30
       storage_class = "STANDARD_IA"
