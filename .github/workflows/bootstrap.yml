@@ -44,9 +44,18 @@ jobs:
             echo "Go to Settings → Secrets and variables → Actions → Variables"
             exit 1
           fi
-          echo "GITHUB_ORG=${{ vars.GITHUB_ORG }}"           >> "$GITHUB_ENV"
-          echo "ARGOCD_NS=${{ vars.ARGOCD_NAMESPACE || 'argocd' }}" >> "$GITHUB_ENV"
-          echo "LBC_CHART_VERSION=${{ vars.LBC_CHART_VERSION || '1.8.1' }}" >> "$GITHUB_ENV"
+          echo "GITHUB_ORG=${{ vars.GITHUB_ORG }}" >> "$GITHUB_ENV"
+
+          # Apply bash-level defaults for optional variables so we never rely on
+          # GitHub Actions || syntax, which is not reliably supported in all contexts.
+          ARGOCD_NS="${{ vars.ARGOCD_NAMESPACE }}"
+          [ -z "$ARGOCD_NS" ] && ARGOCD_NS="argocd"
+          echo "ARGOCD_NS=$ARGOCD_NS" >> "$GITHUB_ENV"
+
+          LBC_CHART_VERSION="${{ vars.LBC_CHART_VERSION }}"
+          [ -z "$LBC_CHART_VERSION" ] && LBC_CHART_VERSION="1.8.1"
+          echo "LBC_CHART_VERSION=$LBC_CHART_VERSION" >> "$GITHUB_ENV"
+
           echo "CA_CHART_VERSION=${{ vars.CLUSTER_AUTOSCALER_CHART_VER }}"  >> "$GITHUB_ENV"
           echo "CA_IMAGE_TAG=${{ vars.CLUSTER_AUTOSCALER_IMAGE_TAG }}"       >> "$GITHUB_ENV"
 
