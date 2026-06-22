@@ -1,0 +1,38 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: smartgrid
+  namespace: argocd
+  # Auto-delete child resources when this Application is deleted
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    # REPLACE <YOUR-ORG> with your GitHub organization name
+    repoURL: https://github.com/<YOUR-ORG>/smartgrid-helm.git
+    # "dev" is the default branch of the helm repo (rename main→dev when creating it)
+    targetRevision: dev
+    path: helm/smartgrid
+    helm:
+      valueFiles:
+        - values.yaml
+      # ArgoCD manages the deployment without re-creating the K8s Secret
+      # (bootstrap.yml pre-creates smartgrid-secrets from AWS Secrets Manager)
+      parameters:
+        - name: secrets.create
+          value: "false"
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
+
+  syncPolicy:
+    automated:
+      prune: true      # delete resources removed from git
+      selfHeal: true   # revert manual kubectl changes
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - ApplyOutOfSyncOnly=true

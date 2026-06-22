@@ -1,0 +1,200 @@
+name: Bootstrap Cluster (ArgoCD + Controllers + Secrets)
+
+on:
+  workflow_dispatch:
+    inputs:
+      cluster_name:
+        description: 'EKS cluster name'
+        required: true
+        default: 'smartgrid-default-cluster'
+      aws_region:
+        description: 'AWS region'
+        required: true
+        default: 'ap-south-1'
+
+env:
+  CLUSTER_NAME: ${{ github.event.inputs.cluster_name }}
+  AWS_REGION:   ${{ github.event.inputs.aws_region }}
+
+jobs:
+  bootstrap:
+    name: Bootstrap EKS Cluster
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # ── AWS ─────────────────────────────────────────────────────────
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --region ${{ env.AWS_REGION }} \
+            --name   ${{ env.CLUSTER_NAME }}
+
+      - name: Install kubectl and Helm
+        run: |
+          curl -LO "https://dl.k8s.io/release/$(curl -Ls https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl && sudo mv kubectl /usr/local/bin/
+          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+      # ── ARGOCD ──────────────────────────────────────────────────────
+      - name: Install ArgoCD
+        run: |
+          helm repo add argo https://argoproj.github.io/argo-helm
+          helm repo update argo
+
+          helm upgrade --install argocd argo/argo-cd \
+            --namespace argocd \
+            --create-namespace \
+            --set configs.params."server\.insecure"=true \
+            --wait --timeout 10m
+
+          echo "--- ArgoCD server URL (port-forward to access UI) ---"
+          echo "kubectl port-forward svc/argocd-server -n argocd 8080:80"
+          echo ""
+          echo "--- Initial admin password ---"
+          kubectl -n argocd get secret argocd-initial-admin-secret \
+            -o jsonpath="{.data.password}" | base64 -d; echo
+
+      - name: Wait for ArgoCD to be fully ready
+        run: |
+          kubectl rollout status deployment/argocd-server        -n argocd --timeout=5m
+          kubectl rollout status deployment/argocd-repo-server   -n argocd --timeout=5m
+          kubectl rollout status deployment/argocd-applicationset-controller -n argocd --timeout=5m
+
+      # ── AWS LOAD BALANCER CONTROLLER ────────────────────────────────
+      - name: Install AWS Load Balancer Controller
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          VPC_ID=$(aws eks describe-cluster \
+            --name ${{ env.CLUSTER_NAME }} \
+            --query "cluster.resourcesVpcConfig.vpcId" \
+            --output text)
+          LBC_ROLE_ARN=$(aws iam get-role \
+            --role-name "smartgrid-default-aws-lb-controller" \
+            --query 'Role.Arn' --output text)
+
+          # Service account
+          kubectl create serviceaccount aws-load-balancer-controller \
+            -n kube-system --dry-run=client -o yaml | kubectl apply -f -
+          kubectl annotate serviceaccount aws-load-balancer-controller \
+            -n kube-system \
+            eks.amazonaws.com/role-arn="$LBC_ROLE_ARN" \
+            --overwrite
+
+          helm repo add eks https://aws.github.io/eks-charts
+          helm repo update eks
+
+          helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
+            --namespace kube-system \
+            --version 1.8.1 \
+            --set clusterName=${{ env.CLUSTER_NAME }} \
+            --set serviceAccount.create=false \
+            --set serviceAccount.name=aws-load-balancer-controller \
+            --set region=${{ env.AWS_REGION }} \
+            --set vpcId="$VPC_ID" \
+            --set replicaCount=1 \
+            --wait --timeout 10m
+
+      # ── CLUSTER AUTOSCALER ──────────────────────────────────────────
+      - name: Install Cluster Autoscaler
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+          helm repo add autoscaler https://kubernetes.github.io/autoscaler
+          helm repo update autoscaler
+
+          # Version must match EKS cluster version (1.31)
+          helm upgrade --install cluster-autoscaler autoscaler/cluster-autoscaler \
+            --namespace kube-system \
+            --set autoDiscovery.clusterName=${{ env.CLUSTER_NAME }} \
+            --set awsRegion=${{ env.AWS_REGION }} \
+            --set image.tag=v1.31.0 \
+            --set rbac.serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="" \
+            --wait --timeout 5m || echo "Cluster Autoscaler install skipped (needs dedicated IRSA role)"
+
+      # ── PRE-CREATE K8S SECRETS FROM AWS SECRETS MANAGER ────────────
+      # ArgoCD deploys with secrets.create=false — secrets must pre-exist.
+      - name: Create production namespace
+        run: |
+          kubectl create namespace production --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Seed K8s secrets from AWS Secrets Manager
+        run: |
+          SECRET_JSON=$(aws secretsmanager get-secret-value \
+            --secret-id smartgrid/config \
+            --query 'SecretString' --output text)
+
+          DB_HOST=$(echo "$SECRET_JSON"     | jq -r '.DB_HOST')
+          DB_PASSWORD=$(echo "$SECRET_JSON" | jq -r '.DB_PASSWORD')
+          JWT_SECRET=$(echo "$SECRET_JSON"  | jq -r '.JWT_SECRET')
+
+          # K8s Secret (sensitive values only)
+          kubectl create secret generic smartgrid-secrets \
+            --namespace production \
+            --from-literal=DB_PASSWORD="$DB_PASSWORD" \
+            --from-literal=JWT_SECRET="$JWT_SECRET" \
+            --from-literal=ADMIN_NAME="Admin" \
+            --from-literal=ADMIN_EMAIL="admin@smartgrid.com" \
+            --from-literal=ADMIN_PASSWORD="Admin@123" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          # ConfigMap (non-sensitive config)
+          kubectl create configmap smartgrid-config \
+            --namespace production \
+            --from-literal=NODE_ENV="production" \
+            --from-literal=DB_HOST="$DB_HOST" \
+            --from-literal=DB_NAME="smartgrid" \
+            --from-literal=DB_USER="smartgrid_user" \
+            --from-literal=DB_PORT="3306" \
+            --from-literal=AWS_REGION="${{ env.AWS_REGION }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          echo "Secrets and ConfigMap created/updated in production namespace."
+
+      # ── APPLY ARGOCD APPLICATIONS ───────────────────────────────────
+      - name: Apply ArgoCD Application manifests
+        run: |
+          # Replace placeholder org name before applying
+          # NOTE: fork the helm repo under your org first, then set YOUR_ORG below
+          # or set it as a repo variable (vars.GITHUB_ORG)
+          ORG="${{ vars.GITHUB_ORG || '<YOUR-ORG>' }}"
+
+          sed "s|<YOUR-ORG>|$ORG|g" argocd/application.yaml      | kubectl apply -f -
+          sed "s|<YOUR-ORG>|$ORG|g" argocd/application-prod.yaml | kubectl apply -f -
+
+      - name: Wait for ArgoCD sync
+        run: |
+          echo "Waiting for smartgrid application to sync (up to 5 min)..."
+          for i in $(seq 1 30); do
+            STATUS=$(kubectl get application smartgrid -n argocd \
+              -o jsonpath='{.status.sync.status}' 2>/dev/null || echo "Unknown")
+            HEALTH=$(kubectl get application smartgrid -n argocd \
+              -o jsonpath='{.status.health.status}' 2>/dev/null || echo "Unknown")
+            echo "  Attempt $i/30 — Sync: $STATUS  Health: $HEALTH"
+            if [ "$STATUS" = "Synced" ] && [ "$HEALTH" = "Healthy" ]; then
+              echo "ArgoCD sync complete."
+              break
+            fi
+            sleep 10
+          done
+
+      - name: Bootstrap summary
+        run: |
+          echo "### Bootstrap Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| ArgoCD | $(kubectl rollout status deployment/argocd-server -n argocd --timeout=10s 2>&1 | tail -1) |" >> $GITHUB_STEP_SUMMARY
+          echo "| LBC | $(kubectl rollout status deployment/aws-load-balancer-controller -n kube-system --timeout=10s 2>&1 | tail -1) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Pods (production) | $(kubectl get pods -n production --no-headers 2>/dev/null | wc -l) running |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**ArgoCD UI**: \`kubectl port-forward svc/argocd-server -n argocd 8080:80\`" >> $GITHUB_STEP_SUMMARY

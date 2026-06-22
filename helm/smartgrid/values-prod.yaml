@@ -1,0 +1,25 @@
+# Production overrides — merged on top of values.yaml by ArgoCD application-prod.yaml
+environment: production
+
+secrets:
+  create: false   # bootstrap pre-creates secrets in prod namespace too
+
+services:
+  auth-service:
+    replicaCount: 2
+  consumer-service:
+    replicaCount: 2
+  meter-service:
+    replicaCount: 2
+    hpa:
+      minReplicas: 2
+      maxReplicas: 8
+  billing-service:
+    replicaCount: 2
+    hpa:
+      minReplicas: 2
+      maxReplicas: 8
+  alert-service:
+    replicaCount: 2
+  ai-assistant-service:
+    replicaCount: 2

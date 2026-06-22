@@ -4,16 +4,31 @@ adminName: "Admin"
 adminEmail: "admin@smartgrid.com"
 adminPassword: "Admin@123"
 awsRegion: ap-south-1
+
+# imageTag is updated automatically by CI (main.yml update-helm-values job)
 imageTag: latest
+
+# REPLACE with your actual ECR registry URL after terraform apply
+# Format: <account-id>.dkr.ecr.<region>.amazonaws.com
 ecrRegistryUrl: "169720629031.dkr.ecr.ap-south-1.amazonaws.com"
 
 database:
+  # REPLACE with your RDS endpoint from terraform output rds_endpoint
   host: "smartgrid-db.c123456789.ap-south-1.rds.amazonaws.com"
   name: "smartgrid"
   user: "smartgrid_user"
-  password: "password"
+  # Only needed when secrets.create=true (direct Helm pipeline mode)
+  # Leave as placeholder when secrets.create=false (ArgoCD mode — bootstrap seeds the secret)
+  password: "REPLACE_WITH_SECRET_OR_LEAVE_FOR_ARGOCD_MODE"
 
-jwtSecret: "a2b53cdd87431e5630283c448f72ee7b2c91b5da8d1234c9fb66b3f7efc4901f"
+# Only needed when secrets.create=true
+jwtSecret: "REPLACE_WITH_SECRET_OR_LEAVE_FOR_ARGOCD_MODE"
+
+# secrets.create=true  → Helm creates the K8s Secret from values above (current pipeline)
+# secrets.create=false → bootstrap.yml pre-creates the secret from AWS Secrets Manager;
+#                        ArgoCD application.yaml passes this as a helm parameter override
+secrets:
+  create: true
 
 ingress:
   enabled: true

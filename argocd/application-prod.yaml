@@ -1,0 +1,32 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: smartgrid-prod
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/<YOUR-ORG>/smartgrid-helm.git
+    # Production promotions are done manually: merge dev → prod branch
+    targetRevision: prod
+    path: helm/smartgrid
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-prod.yaml
+      parameters:
+        - name: secrets.create
+          value: "false"
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: prod
+
+  syncPolicy:
+    # Production sync is MANUAL — trigger from ArgoCD UI or argocd CLI
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
