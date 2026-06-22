@@ -45,7 +45,7 @@ jobs:
 
       # ── AWS / ECR ────────────────────────────────────────────────────
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -59,7 +59,15 @@ jobs:
         id: image
         run: |
           REGISTRY="${{ steps.ecr-login.outputs.registry }}"
-          REPO="smartgrid-default-${{ inputs.service }}"
+          # ECR_REPO_PREFIX must be set as a GitHub Variable (e.g. "smartgrid-default").
+          # It is derived from the cluster name: <cluster-name minus "-cluster" suffix>.
+          # Set it in: Settings → Secrets and variables → Actions → Variables → ECR_REPO_PREFIX
+          REPO_PREFIX="${{ vars.ECR_REPO_PREFIX }}"
+          if [ -z "$REPO_PREFIX" ]; then
+            echo "ERROR: vars.ECR_REPO_PREFIX is not set. Add it under Actions Variables."
+            exit 1
+          fi
+          REPO="${REPO_PREFIX}-${{ inputs.service }}"
           TAG="${{ steps.tag.outputs.short_sha }}"
           echo "name=${REGISTRY}/${REPO}:${TAG}"   >> $GITHUB_OUTPUT
           echo "latest=${REGISTRY}/${REPO}:latest" >> $GITHUB_OUTPUT
