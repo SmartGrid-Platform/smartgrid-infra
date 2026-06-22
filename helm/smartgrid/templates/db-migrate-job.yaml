@@ -29,8 +29,16 @@ spec:
           command: ["/bin/sh", "-c"]
           args:
             - |
-              npm run migrate && \
-              ADMIN_NAME="{{ .Values.adminName }}" ADMIN_EMAIL="{{ .Values.adminEmail }}" ADMIN_PASSWORD="{{ .Values.adminPassword }}" npm run bootstrap
+              npm run migrate && npm run bootstrap
+          env:
+            - name: SKIP_SECRETS_MANAGER
+              value: "true"
+            - name: ADMIN_NAME
+              value: {{ .Values.adminName | quote }}
+            - name: ADMIN_EMAIL
+              value: {{ .Values.adminEmail | quote }}
+            - name: ADMIN_PASSWORD
+              value: {{ .Values.adminPassword | quote }}
           envFrom:
             - configMapRef:
                 name: smartgrid-config

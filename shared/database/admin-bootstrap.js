@@ -1,43 +1,39 @@
-const readline = require('readline');
 const bcrypt = require('bcryptjs');
 const { loadSecrets } = require('./secrets-manager');
-
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout
-});
-
-const askQuestion = (query) => new Promise((resolve) => rl.question(query, resolve));
 
 async function bootstrapAdmin() {
   await loadSecrets();
   const { User } = require('./models');
-  
+
   console.log('\n--- SmartGrid Admin Bootstrapper ---');
-  
+
   let name = process.env.ADMIN_NAME;
   let email = process.env.ADMIN_EMAIL;
   let password = process.env.ADMIN_PASSWORD;
 
   if (!name || !email || !password) {
+    const readline = require('readline');
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    const askQuestion = (query) => new Promise((resolve) => rl.question(query, resolve));
+
     console.log('Admin credentials not detected in environment. Interactive setup:');
     name = await askQuestion('Enter Admin Name: ');
     while (!name.trim()) {
       name = await askQuestion('Name cannot be empty. Enter Admin Name: ');
     }
-    
+
     email = await askQuestion('Enter Admin Email: ');
     while (!email.trim() || !email.includes('@')) {
       email = await askQuestion('Please enter a valid email: ');
     }
-    
+
     password = await askQuestion('Enter Admin Password: ');
     while (password.length < 6) {
       password = await askQuestion('Password must be at least 6 characters: ');
     }
-  }
 
-  rl.close();
+    rl.close();
+  }
 
   try {
     // Check if user already exists
