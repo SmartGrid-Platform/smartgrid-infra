@@ -156,14 +156,30 @@ jobs:
             --region ${{ secrets.AWS_REGION }} \
             --name ${{ env.CLUSTER_NAME }}
 
-      - name: Enable VPC CNI prefix delegation (raises t3.small pod limit 11→110)
+      - name: Free pod slots on single t3.small node
         run: |
-          kubectl set env daemonset aws-node \
-            -n kube-system \
-            ENABLE_PREFIX_DELEGATION=true \
-            WARM_PREFIX_TARGET=1 2>/dev/null || true
-          # Give aws-node pods 30s to restart with the new config
-          kubectl rollout status daemonset/aws-node -n kube-system --timeout=60s 2>/dev/null || true
+          # t3.small ENI limit = 11 pods max. System pods alone use 9 slots:
+          # 3 from Container Insights addon + 2 from LBC default replicas + 4 core.
+          # Remove the addon (frees 3 slots) and shrink LBC to 1 replica (frees 1).
+          # Result: 5 system pods, leaving 6 slots — exactly enough for 6 services.
+
+          echo "--- Deleting Container Insights addon (frees 3 pod slots) ---"
+          aws eks delete-addon \
+            --cluster-name ${{ env.CLUSTER_NAME }} \
+            --region ${{ secrets.AWS_REGION }} \
+            --addon-name amazon-cloudwatch-observability \
+            --preserve 2>/dev/null || echo "Addon not present, skipping."
+
+          echo "--- Scaling LBC to 1 replica (frees 1 pod slot) ---"
+          kubectl scale deployment aws-load-balancer-controller \
+            --replicas=1 -n kube-system 2>/dev/null || true
+
+          echo "--- Waiting for Container Insights pods to terminate (up to 90s) ---"
+          kubectl wait --for=delete pods --all \
+            -n amazon-cloudwatch --timeout=90s 2>/dev/null || true
+
+          echo "--- Pod count after cleanup ---"
+          kubectl get pods -A --no-headers | wc -l
 
       - name: Fetch runtime values from AWS
         id: runtime

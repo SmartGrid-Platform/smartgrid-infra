@@ -2,26 +2,13 @@
 # CloudWatch — Alarms, Dashboard, Container Insights
 #################################################
 
-# Allow EKS nodes to publish Container Insights metrics to CloudWatch
+# CloudWatchAgentServerPolicy kept on node role for basic node-level metrics.
+# Container Insights addon removed — it adds 3 pods (observability-controller,
+# cloudwatch-agent, fluent-bit) to the single t3.small node, exhausting the
+# 11-pod ENI limit and blocking service pod scheduling.
 resource "aws_iam_role_policy_attachment" "eks_node_cloudwatch" {
   role       = aws_iam_role.eks_node_role.name
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
-}
-
-# Container Insights addon — enables pod/node CPU & memory metrics in CloudWatch
-resource "aws_eks_addon" "cloudwatch_observability" {
-  cluster_name = aws_eks_cluster.eks.name
-  addon_name   = "amazon-cloudwatch-observability"
-
-  depends_on = [
-    aws_iam_role_policy_attachment.eks_node_cloudwatch,
-    aws_eks_node_group.nodes
-  ]
-
-  tags = {
-    Environment = var.environment
-    Owner       = "smartgrid-team"
-  }
 }
 
 #################################################

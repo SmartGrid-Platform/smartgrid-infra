@@ -284,7 +284,7 @@ resource "null_resource" "install_lbc" {
       $ErrorActionPreference = 'Stop'
       Start-Sleep 10
 
-      helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller --namespace kube-system --version 1.8.1 --set clusterName=${aws_eks_cluster.eks.name} --set serviceAccount.create=false --set serviceAccount.name=aws-load-balancer-controller --set region=${var.aws_region} --set vpcId=${aws_vpc.smartgrid_vpc.id} --wait --timeout 10m
+      helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller --namespace kube-system --version 1.8.1 --set clusterName=${aws_eks_cluster.eks.name} --set serviceAccount.create=false --set serviceAccount.name=aws-load-balancer-controller --set region=${var.aws_region} --set vpcId=${aws_vpc.smartgrid_vpc.id} --set replicaCount=1 --wait --timeout 10m
       if (-not $?) { exit 1 }
 
       Write-Host "--- LBC installed successfully ---"
