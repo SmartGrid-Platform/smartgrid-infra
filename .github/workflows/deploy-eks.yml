@@ -1,5 +1,14 @@
 name: CI/CD - Build, Push & Deploy to EKS
 
+# GitOps deployment flow:
+#   1. Per-service CI (main.yml) builds, scans, and pushes images to ECR.
+#   2. main.yml updates imageTag in smartgrid-helm values.yaml and commits.
+#   3. ArgoCD detects the commit and syncs the EKS deployment automatically.
+#
+# This workflow handles the infrastructure-adjacent tasks that run alongside
+# that GitOps flow: IaC scanning, frontend upload, and CloudFront origin switch.
+# It does NOT run helm upgrade or kubectl apply directly — that is ArgoCD's job.
+
 on:
   push:
     branches:
@@ -129,228 +138,17 @@ jobs:
           aws s3 sync frontend/dist/ "s3://$FRONTEND_BUCKET" --delete
 
   # ─────────────────────────────────────────────────────────────
-  # 3. Build & Push all Docker images to ECR
-  # ─────────────────────────────────────────────────────────────
-  build-and-push-images:
-    name: Build & Push Docker Images to ECR
-    runs-on: ubuntu-latest
-    needs: [read-tf-outputs, security-scans]
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ secrets.AWS_REGION }}
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Build and Push Backend Services
-        env:
-          ECR_REGISTRY: ${{ needs.read-tf-outputs.outputs.ecr_registry_url }}
-          CLUSTER_NAME: ${{ needs.read-tf-outputs.outputs.cluster_name }}
-        run: |
-          # Derive ECR repo prefix from cluster name: smartgrid-<env>-cluster → smartgrid-<env>
-          REPO_PREFIX="${CLUSTER_NAME%-cluster}"
-          SERVICES=("auth-service" "consumer-service" "meter-service" "billing-service" "alert-service" "ai-assistant-service")
-          for SERVICE in "${SERVICES[@]}"; do
-            echo "Building $SERVICE..."
-            docker build \
-              -t "$ECR_REGISTRY/${REPO_PREFIX}-${SERVICE}:${{ github.sha }}" \
-              -t "$ECR_REGISTRY/${REPO_PREFIX}-${SERVICE}:latest" \
-              -f "services/$SERVICE/Dockerfile" .
-            echo "Pushing $SERVICE..."
-            docker push "$ECR_REGISTRY/${REPO_PREFIX}-${SERVICE}:${{ github.sha }}"
-            docker push "$ECR_REGISTRY/${REPO_PREFIX}-${SERVICE}:latest"
-          done
-
-  # ─────────────────────────────────────────────────────────────
-  # 4. Deploy to EKS via Helm
-  # ─────────────────────────────────────────────────────────────
-  deploy-to-eks:
-    name: Deploy to AWS EKS (Helm)
-    runs-on: ubuntu-latest
-    needs: [read-tf-outputs, build-and-push-images, upload-frontend]
-    env:
-      CLUSTER_NAME:  ${{ needs.read-tf-outputs.outputs.cluster_name }}
-      K8S_NAMESPACE: ${{ needs.read-tf-outputs.outputs.k8s_namespace }}
-      SECRET_NAME:   ${{ needs.read-tf-outputs.outputs.secret_name }}
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ secrets.AWS_REGION }}
-
-      - name: Install jq, kubectl, Helm
-        run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq jq
-          KUBECTL_VER=$(curl -sSL https://dl.k8s.io/release/stable.txt)
-          curl -sSLO "https://dl.k8s.io/release/${KUBECTL_VER}/bin/linux/amd64/kubectl"
-          chmod +x kubectl && sudo mv kubectl /usr/local/bin/kubectl
-          curl -sSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-
-      - name: Configure kubeconfig
-        run: |
-          aws eks update-kubeconfig \
-            --region "${{ secrets.AWS_REGION }}" \
-            --name   "$CLUSTER_NAME"
-
-      - name: Fetch all runtime values from Secrets Manager
-        id: runtime
-        run: |
-          SECRET_JSON=$(aws secretsmanager get-secret-value \
-            --secret-id  "$SECRET_NAME" \
-            --query 'SecretString' \
-            --output text)
-
-          ECR_REGISTRY="${{ needs.read-tf-outputs.outputs.ecr_registry_url }}"
-          IRSA_ROLE="${{ needs.read-tf-outputs.outputs.eks_pod_role_arn }}"
-
-          DB_HOST=$(        echo "$SECRET_JSON" | jq -r '.DB_HOST')
-          DB_NAME=$(        echo "$SECRET_JSON" | jq -r '.DB_NAME')
-          DB_USER=$(        echo "$SECRET_JSON" | jq -r '.DB_USER')
-          DB_PORT=$(        echo "$SECRET_JSON" | jq -r '.DB_PORT')
-          DB_PASSWORD=$(    echo "$SECRET_JSON" | jq -r '.DB_PASSWORD')
-          JWT_SECRET=$(     echo "$SECRET_JSON" | jq -r '.JWT_SECRET')
-          ADMIN_NAME=$(     echo "$SECRET_JSON" | jq -r '.ADMIN_NAME')
-          ADMIN_EMAIL=$(    echo "$SECRET_JSON" | jq -r '.ADMIN_EMAIL')
-          ADMIN_PASSWORD=$( echo "$SECRET_JSON" | jq -r '.ADMIN_PASSWORD')
-          AWS_REGION_VAL=$( echo "$SECRET_JSON" | jq -r '.AWS_REGION')
-
-          echo "::add-mask::$DB_PASSWORD"
-          echo "::add-mask::$JWT_SECRET"
-          echo "::add-mask::$ADMIN_PASSWORD"
-
-          echo "ecr_registry=$ECR_REGISTRY"   >> "$GITHUB_OUTPUT"
-          echo "irsa_role=$IRSA_ROLE"          >> "$GITHUB_OUTPUT"
-          echo "db_host=$DB_HOST"              >> "$GITHUB_OUTPUT"
-          echo "db_name=$DB_NAME"              >> "$GITHUB_OUTPUT"
-          echo "db_user=$DB_USER"              >> "$GITHUB_OUTPUT"
-          echo "db_port=$DB_PORT"              >> "$GITHUB_OUTPUT"
-          echo "db_password=$DB_PASSWORD"      >> "$GITHUB_OUTPUT"
-          echo "jwt_secret=$JWT_SECRET"        >> "$GITHUB_OUTPUT"
-          echo "admin_name=$ADMIN_NAME"        >> "$GITHUB_OUTPUT"
-          echo "admin_email=$ADMIN_EMAIL"      >> "$GITHUB_OUTPUT"
-          echo "admin_password=$ADMIN_PASSWORD" >> "$GITHUB_OUTPUT"
-          echo "aws_region=$AWS_REGION_VAL"    >> "$GITHUB_OUTPUT"
-
-      - name: Clean up stale release and pods
-        run: |
-          helm uninstall smartgrid -n "$K8S_NAMESPACE" 2>/dev/null || true
-          kubectl delete jobs -n "$K8S_NAMESPACE" --all --ignore-not-found=true 2>/dev/null || true
-          echo "Waiting for pods in $K8S_NAMESPACE to terminate..."
-          kubectl wait --for=delete pods --all -n "$K8S_NAMESPACE" --timeout=120s 2>/dev/null || true
-
-      - name: Helm upgrade / install
-        run: |
-          # Derive ECR repo prefix from cluster name: smartgrid-<env>-cluster → smartgrid-<env>
-          REPO_PREFIX="${CLUSTER_NAME%-cluster}"
-
-          cat > /tmp/runtime-values.yaml <<EOF
-          serviceAccount:
-            annotations:
-              eks.amazonaws.com/role-arn: "${{ steps.runtime.outputs.irsa_role }}"
-          EOF
-
-          helm upgrade --install smartgrid ./helm/smartgrid \
-            --namespace "$K8S_NAMESPACE" \
-            --create-namespace \
-            --wait \
-            --timeout 15m \
-            -f /tmp/runtime-values.yaml \
-            --set ecrRegistryUrl="${{ steps.runtime.outputs.ecr_registry }}" \
-            --set imageTag="${{ github.sha }}" \
-            --set awsRegion="${{ steps.runtime.outputs.aws_region }}" \
-            --set database.host="${{ steps.runtime.outputs.db_host }}" \
-            --set database.name="${{ steps.runtime.outputs.db_name }}" \
-            --set database.user="${{ steps.runtime.outputs.db_user }}" \
-            --set database.port="${{ steps.runtime.outputs.db_port }}" \
-            --set database.password="${{ steps.runtime.outputs.db_password }}" \
-            --set jwtSecret="${{ steps.runtime.outputs.jwt_secret }}" \
-            --set adminName="${{ steps.runtime.outputs.admin_name }}" \
-            --set adminEmail="${{ steps.runtime.outputs.admin_email }}" \
-            --set adminPassword="${{ steps.runtime.outputs.admin_password }}"
-
-      - name: Verify rollout status
-        run: |
-          SERVICES="auth-service consumer-service meter-service billing-service alert-service ai-assistant-service"
-          for svc in $SERVICES; do
-            echo "--- Checking rollout: $svc ---"
-            kubectl rollout status "deployment/$svc" -n "$K8S_NAMESPACE" --timeout=5m
-          done
-
-      - name: Smoke tests
-        run: |
-          SERVICES="auth-service:3001 consumer-service:3002 meter-service:3003 billing-service:3004 alert-service:3005"
-          FAILED=0
-          for svc_port in $SERVICES; do
-            SVC=$(echo "$svc_port" | cut -d: -f1)
-            PORT=$(echo "$svc_port" | cut -d: -f2)
-            echo "--- Smoke test: $SVC /healthz ---"
-            STATUS=$(kubectl run "smoke-$SVC" \
-              --image=curlimages/curl:latest \
-              --restart=Never \
-              -n "$K8S_NAMESPACE" \
-              --rm -i --timeout=30s \
-              -- curl -s -o /dev/null -w "%{http_code}" \
-                 "http://${SVC}:${PORT}/healthz" 2>/dev/null || echo "000")
-            if [ "$STATUS" = "200" ]; then
-              echo "  $SVC: OK (200)"
-            else
-              echo "  $SVC: FAILED (got $STATUS)"
-              FAILED=1
-            fi
-          done
-          STATUS=$(kubectl run smoke-ai \
-            --image=curlimages/curl:latest \
-            --restart=Never \
-            -n "$K8S_NAMESPACE" \
-            --rm -i --timeout=30s \
-            -- curl -s -o /dev/null -w "%{http_code}" \
-               "http://ai-assistant-service:4004/api/assistant/healthz" 2>/dev/null || echo "000")
-          if [ "$STATUS" = "200" ]; then
-            echo "  ai-assistant-service: OK (200)"
-          else
-            echo "  ai-assistant-service: FAILED (got $STATUS)"
-            FAILED=1
-          fi
-          [ "$FAILED" -eq 0 ] || exit 1
-
-      - name: Diagnostics on failure
-        if: failure()
-        run: |
-          kubectl describe nodes | grep -A 10 "Allocatable:\|Allocated resources:\|Non-terminated Pods:"
-          kubectl get pods -A -o wide
-          kubectl get pods -n "$K8S_NAMESPACE" -o wide
-          kubectl get events -n "$K8S_NAMESPACE" --sort-by=.lastTimestamp | tail -30
-          for pod in $(kubectl get pods -n "$K8S_NAMESPACE" --field-selector=status.phase=Pending -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
-            echo "--- Pending: $pod ---"
-            kubectl describe pod "$pod" -n "$K8S_NAMESPACE" | grep -A 5 "Events:\|Reason:\|Message:"
-          done
-          for pod in $(kubectl get pods -n "$K8S_NAMESPACE" -o jsonpath='{range .items[?(@.status.containerStatuses[0].state.waiting.reason=="CrashLoopBackOff")]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do
-            echo "--- CrashLoop logs: $pod ---"
-            kubectl logs "$pod" -n "$K8S_NAMESPACE" --tail=50 2>/dev/null || true
-          done
-
-  # ─────────────────────────────────────────────────────────────
-  # 5. Switch CloudFront origin to the EKS ALB
+  # 3. Switch CloudFront origin to the EKS ALB
+  #
+  # ArgoCD syncs the Helm release (triggered by imageTag commit in
+  # smartgrid-helm). The ALB is provisioned by the AWS Load Balancer
+  # Controller when ArgoCD creates the Ingress. This job polls until
+  # the ALB hostname appears, then updates CloudFront.
   # ─────────────────────────────────────────────────────────────
   update-cloudfront:
     name: Switch CloudFront to EKS ALB
     runs-on: ubuntu-latest
-    needs: [read-tf-outputs, deploy-to-eks]
+    needs: [read-tf-outputs, upload-frontend]
     env:
       CLUSTER_NAME:    ${{ needs.read-tf-outputs.outputs.cluster_name }}
       K8S_NAMESPACE:   ${{ needs.read-tf-outputs.outputs.k8s_namespace }}
@@ -432,3 +230,6 @@ jobs:
           echo "- EKS ALB DNS: ${{ steps.get-alb.outputs.eks_alb_dns }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- CloudFront URL: https://${{ env.CLOUDFRONT_URL }}"     >> "$GITHUB_STEP_SUMMARY"
           echo "- API base: https://${{ env.CLOUDFRONT_URL }}/api"       >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "> Images built by per-service CI (main.yml)." >> "$GITHUB_STEP_SUMMARY"
+          echo "> EKS deployment handled by ArgoCD syncing smartgrid-helm." >> "$GITHUB_STEP_SUMMARY"

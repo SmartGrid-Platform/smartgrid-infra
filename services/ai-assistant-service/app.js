@@ -11,9 +11,9 @@ app.use(cors());
 app.use(helmet());
 app.use(morgan('dev'));
 
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'healthy', service: 'ai-assistant-service', timestamp: new Date() });
-});
+app.get('/health',  (req, res) => res.status(200).json({ status: 'healthy', service: 'ai-assistant-service', timestamp: new Date() }));
+app.get('/healthz', (req, res) => res.status(200).json({ status: 'healthy', service: 'ai-assistant-service', timestamp: new Date() }));
+app.get('/ready',   (req, res) => res.status(200).json({ status: 'ready',   service: 'ai-assistant-service', timestamp: new Date() }));
 
 app.use('/api/assistant', assistantRoutes);
 

@@ -23,11 +23,12 @@ on:
 # Sensitive values come from GitHub Secrets (TF_VAR_* prefix).
 # Non-sensitive backend coordinates come from GitHub Variables.
 env:
-  TF_VAR_db_password:    ${{ secrets.TF_VAR_RDS_PASSWORD }}
-  TF_VAR_jwt_secret:     ${{ secrets.TF_VAR_JWT_SECRET }}
-  TF_VAR_admin_password: ${{ secrets.TF_VAR_ADMIN_PASSWORD }}
-  TF_VAR_smtp_user:      ${{ secrets.TF_VAR_SMTP_USER }}
-  TF_VAR_smtp_pass:      ${{ secrets.TF_VAR_SMTP_PASS }}
+  TF_VAR_db_password:         ${{ secrets.TF_VAR_RDS_PASSWORD }}
+  TF_VAR_jwt_secret:          ${{ secrets.TF_VAR_JWT_SECRET }}
+  TF_VAR_admin_password:      ${{ secrets.TF_VAR_ADMIN_PASSWORD }}
+  TF_VAR_smtp_user:           ${{ secrets.TF_VAR_SMTP_USER }}
+  TF_VAR_smtp_pass:           ${{ secrets.TF_VAR_SMTP_PASS }}
+  TF_VAR_notification_email:  ${{ secrets.TF_VAR_NOTIFICATION_EMAIL }}
 
 jobs:
   # ─────────────────────────────────────────────────────────────

@@ -10,8 +10,8 @@ async function loadSecrets() {
   const secretName = process.env.AWS_SECRET_NAME || 'smartgrid/config';
   const region = process.env.AWS_REGION || 'ap-south-1';
 
-  if (process.env.SKIP_SECRETS_MANAGER === 'true') {
-    console.log('[Secrets Manager] Skipping loading secrets from AWS Secrets Manager (SKIP_SECRETS_MANAGER is set).');
+  if (process.env.SKIP_SECRETS_MANAGER === 'true' || process.env.SKIP_DB === 'true') {
+    console.log('[Secrets Manager] Skipping AWS Secrets Manager (SKIP_SECRETS_MANAGER or SKIP_DB is set).');
     secretsLoaded = true;
     return;
   }

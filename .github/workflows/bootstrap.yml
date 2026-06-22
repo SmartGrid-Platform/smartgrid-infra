@@ -15,7 +15,10 @@ name: Bootstrap Cluster (ArgoCD + Controllers + Secrets)
 #
 # Required GitHub Secrets:
 #   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION
-#   GH_PAT (GitHub Personal Access Token with repo write scope)
+#
+# NOTE: No GH_PAT is required for ArgoCD — smartgrid-helm is a PUBLIC repository.
+# ArgoCD reads directly from https://github.com/<org>/smartgrid-helm.git without credentials.
+# GH_PAT is only needed in smartgrid-app's main.yml to WRITE imageTag commits.
 
 on:
   workflow_dispatch: {}   # no inputs — everything comes from terraform outputs
