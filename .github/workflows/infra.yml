@@ -234,8 +234,9 @@ jobs:
           tf_import "module.smartgrid_core.aws_iam_role.eks_cluster_role"     "smartgrid-default-eks-cluster-role"
           tf_import "module.smartgrid_core.aws_iam_role.eks_node_role"        "smartgrid-default-eks-node-role"
           tf_import "module.smartgrid_core.aws_iam_role.vpc_flow_logs_role"   "smartgrid-default-vpc-flow-logs-role"
-          tf_import "module.smartgrid_core.aws_iam_role.eks_pod_role"         "smartgrid-default-eks-pod-role"
-          tf_import "module.smartgrid_core.aws_iam_role.cluster_autoscaler"   "smartgrid-default-cluster-autoscaler"
+          tf_import "module.smartgrid_core.aws_iam_role.eks_pod_role"              "smartgrid-default-eks-pod-role"
+          tf_import "module.smartgrid_core.aws_iam_role.cluster_autoscaler"      "smartgrid-default-cluster-autoscaler"
+          tf_import "module.smartgrid_core.aws_iam_role.aws_load_balancer_controller" "smartgrid-default-aws-lb-controller"
 
           # IAM Roles with random suffix
           BACKEND_ROLE=$(aws iam list-roles \
@@ -313,6 +314,27 @@ jobs:
             tf_import "module.smartgrid_core.aws_lb_target_group.${TF}" "$TG_ARN"
           done
 
+          # ── ALB Listener & Rules ───────────────────────────────────────────
+          LISTENER_ARN=$(aws elbv2 describe-listeners \
+            --load-balancer-arn "$ALB_ARN" \
+            --query 'Listeners[?Port==`80`].ListenerArn|[0]' --output text 2>/dev/null)
+          tf_import "module.smartgrid_core.aws_lb_listener.http_listener" "$LISTENER_ARN"
+
+          for PRIORITY in 10 20 30 40 50 60; do
+            RULE_ARN=$(aws elbv2 describe-rules \
+              --listener-arn "$LISTENER_ARN" \
+              --query "Rules[?Priority=='${PRIORITY}'].RuleArn|[0]" --output text 2>/dev/null)
+            case "$PRIORITY" in
+              10) TF="route_auth" ;;
+              20) TF="route_consumer" ;;
+              30) TF="route_meter" ;;
+              40) TF="route_billing" ;;
+              50) TF="route_alert" ;;
+              60) TF="route_assistant" ;;
+            esac
+            tf_import "module.smartgrid_core.aws_lb_listener_rule.${TF}" "$RULE_ARN"
+          done
+
           # ── Backup ─────────────────────────────────────────────────────────
           tf_import "module.smartgrid_core.aws_backup_vault.main" "smartgrid-default-backup-vault"
 
@@ -369,6 +391,29 @@ jobs:
             --secret-id smartgrid-default/config \
             --query 'ARN' --output text 2>/dev/null)
           tf_import "module.smartgrid_core.aws_secretsmanager_secret.smartgrid_secret" "$SECRET_ARN"
+
+          # ── CloudTrail ────────────────────────────────────────────────────
+          TRAIL_ARN=$(aws cloudtrail get-trail --name smartgrid-default-trail \
+            --query 'Trail.TrailARN' --output text 2>/dev/null)
+          tf_import "module.smartgrid_core.aws_cloudtrail.main" "$TRAIL_ARN"
+
+          # ── CloudFront Distribution ────────────────────────────────────────
+          CF_ID=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?contains(Origins.Items[0].DomainName,'frontend-bucket')].Id|[0]" \
+            --output text 2>/dev/null)
+          tf_import "module.smartgrid_core.aws_cloudfront_distribution.cdn" "$CF_ID"
+
+          # ── Backup Plan & Selection ────────────────────────────────────────
+          BACKUP_PLAN_ID=$(aws backup list-backup-plans \
+            --query "BackupPlansList[?BackupPlanName=='smartgrid-default-backup-plan'].BackupPlanId|[0]" \
+            --output text 2>/dev/null)
+          if [ -n "$BACKUP_PLAN_ID" ] && [ "$BACKUP_PLAN_ID" != "None" ]; then
+            tf_import "module.smartgrid_core.aws_backup_plan.main" "$BACKUP_PLAN_ID"
+            BACKUP_SEL_ID=$(aws backup list-backup-selections \
+              --backup-plan-id "$BACKUP_PLAN_ID" \
+              --query "BackupSelectionsList[0].SelectionId" --output text 2>/dev/null)
+            tf_import "module.smartgrid_core.aws_backup_selection.rds" "${BACKUP_PLAN_ID}:${BACKUP_SEL_ID}"
+          fi
 
           echo "=== Import step complete ==="
 
