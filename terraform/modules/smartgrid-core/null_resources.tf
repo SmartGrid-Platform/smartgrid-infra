@@ -16,19 +16,16 @@ resource "null_resource" "upload_frontend" {
   #   cd frontend && npm install && npm run build
   #   aws s3 sync dist s3://<frontend-bucket> --delete
   provisioner "local-exec" {
-    interpreter = ["powershell", "-NonInteractive", "-Command"]
+    interpreter = ["bash", "-c"]
     command     = <<-EOT
-      $npm = Get-Command npm -ErrorAction SilentlyContinue
-      if ($null -eq $npm) {
-        Write-Host "WARNING: npm not found - skipping frontend build. Upload manually after installing Node.js."
+      if ! command -v npm &>/dev/null; then
+        echo "WARNING: npm not found — skipping frontend build. Upload manually after installing Node.js."
         exit 0
-      }
-      Set-Location "${path.root}/../frontend"
-      npm install
-      if (-not $?) { exit 1 }
-      npm run build
-      if (-not $?) { exit 1 }
-      aws s3 sync dist s3://${aws_s3_bucket.frontend_bucket.id} --delete
+      fi
+      cd "${path.root}/../frontend"
+      npm install || exit 1
+      npm run build || exit 1
+      aws s3 sync dist "s3://${aws_s3_bucket.frontend_bucket.id}" --delete
     EOT
   }
 }

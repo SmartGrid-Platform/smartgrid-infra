@@ -121,6 +121,257 @@ jobs:
             -backend-config="region=${{ vars.AWS_REGION }}" \
             -backend-config="dynamodb_table=${{ vars.TF_STATE_LOCK_TABLE }}"
 
+      - name: Import pre-existing AWS resources into Terraform state
+        working-directory: ./terraform
+        run: |
+          # Idempotent helper — skips if already in state or resource not found in AWS
+          tf_import() {
+            local address="$1" id="$2"
+            [ -z "$id" ] || [ "$id" = "None" ] && { echo "SKIP (not in AWS): $address"; return 0; }
+            terraform state show "$address" &>/dev/null && { echo "SKIP (in state): $address"; return 0; }
+            echo "IMPORT: $address"
+            terraform import "$address" "$id" || echo "WARN: import failed for $address"
+          }
+
+          # ── Random suffix (derive from bills bucket name) ──────────────────
+          BILLS_BUCKET=$(aws s3api list-buckets \
+            --query "Buckets[?starts_with(Name,'smartgrid-default-bills-bucket-')].Name|[0]" \
+            --output text 2>/dev/null)
+          SUFFIX=$(echo "$BILLS_BUCKET" | sed 's/smartgrid-default-bills-bucket-//')
+          [ -n "$SUFFIX" ] && [ "$SUFFIX" != "None" ] && \
+            tf_import "module.smartgrid_core.random_string.suffix" "$SUFFIX"
+
+          # ── VPC ────────────────────────────────────────────────────────────
+          VPC_ID=$(aws ec2 describe-vpcs \
+            --filters "Name=tag:Name,Values=smartgrid-default-vpc" \
+            --query 'Vpcs[0].VpcId' --output text 2>/dev/null)
+          tf_import "module.smartgrid_core.aws_vpc.smartgrid_vpc" "$VPC_ID"
+
+          if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
+            for SUBNET_TAG in public-a public-b private-app-a private-app-b db-subnet-a db-subnet-b; do
+              SUBNET_ID=$(aws ec2 describe-subnets \
+                --filters "Name=tag:Name,Values=smartgrid-default-${SUBNET_TAG}" \
+                          "Name=vpc-id,Values=$VPC_ID" \
+                --query 'Subnets[0].SubnetId' --output text 2>/dev/null)
+              case "$SUBNET_TAG" in
+                public-a)     TF_ADDR="module.smartgrid_core.aws_subnet.public_a" ;;
+                public-b)     TF_ADDR="module.smartgrid_core.aws_subnet.public_b" ;;
+                private-app-a) TF_ADDR="module.smartgrid_core.aws_subnet.private_app_a" ;;
+                private-app-b) TF_ADDR="module.smartgrid_core.aws_subnet.private_app_b" ;;
+                db-subnet-a)  TF_ADDR="module.smartgrid_core.aws_subnet.private_db_a" ;;
+                db-subnet-b)  TF_ADDR="module.smartgrid_core.aws_subnet.private_db_b" ;;
+              esac
+              tf_import "$TF_ADDR" "$SUBNET_ID"
+            done
+
+            IGW_ID=$(aws ec2 describe-internet-gateways \
+              --filters "Name=attachment.vpc-id,Values=$VPC_ID" \
+              --query 'InternetGateways[0].InternetGatewayId' --output text 2>/dev/null)
+            tf_import "module.smartgrid_core.aws_internet_gateway.igw" "$IGW_ID"
+
+            NAT_ID=$(aws ec2 describe-nat-gateways \
+              --filter "Name=vpc-id,Values=$VPC_ID" "Name=state,Values=available" \
+              --query 'NatGateways[0].NatGatewayId' --output text 2>/dev/null)
+            tf_import "module.smartgrid_core.aws_nat_gateway.nat_a" "$NAT_ID"
+
+            EIP_ALLOC=$(aws ec2 describe-nat-gateways --nat-gateway-ids "$NAT_ID" \
+              --query 'NatGateways[0].NatGatewayAddresses[0].AllocationId' \
+              --output text 2>/dev/null)
+            tf_import "module.smartgrid_core.aws_eip.nat_eip_a" "$EIP_ALLOC"
+
+            for RT_TAG in public-rt private-rt db-rt; do
+              RT_ID=$(aws ec2 describe-route-tables \
+                --filters "Name=tag:Name,Values=smartgrid-default-${RT_TAG}" \
+                          "Name=vpc-id,Values=$VPC_ID" \
+                --query 'RouteTables[0].RouteTableId' --output text 2>/dev/null)
+              case "$RT_TAG" in
+                public-rt)  TF_ADDR="module.smartgrid_core.aws_route_table.public_rt" ;;
+                private-rt) TF_ADDR="module.smartgrid_core.aws_route_table.private_rt_a" ;;
+                db-rt)      TF_ADDR="module.smartgrid_core.aws_route_table.db_rt" ;;
+              esac
+              tf_import "$TF_ADDR" "$RT_ID"
+            done
+
+            PUBLIC_A=$(aws ec2 describe-subnets --filters "Name=tag:Name,Values=smartgrid-default-public-a" "Name=vpc-id,Values=$VPC_ID" --query 'Subnets[0].SubnetId' --output text 2>/dev/null)
+            PUBLIC_B=$(aws ec2 describe-subnets --filters "Name=tag:Name,Values=smartgrid-default-public-b" "Name=vpc-id,Values=$VPC_ID" --query 'Subnets[0].SubnetId' --output text 2>/dev/null)
+            PRIV_A=$(aws ec2 describe-subnets --filters "Name=tag:Name,Values=smartgrid-default-private-app-a" "Name=vpc-id,Values=$VPC_ID" --query 'Subnets[0].SubnetId' --output text 2>/dev/null)
+            PRIV_B=$(aws ec2 describe-subnets --filters "Name=tag:Name,Values=smartgrid-default-private-app-b" "Name=vpc-id,Values=$VPC_ID" --query 'Subnets[0].SubnetId' --output text 2>/dev/null)
+            DB_A=$(aws ec2 describe-subnets --filters "Name=tag:Name,Values=smartgrid-default-db-subnet-a" "Name=vpc-id,Values=$VPC_ID" --query 'Subnets[0].SubnetId' --output text 2>/dev/null)
+            DB_B=$(aws ec2 describe-subnets --filters "Name=tag:Name,Values=smartgrid-default-db-subnet-b" "Name=vpc-id,Values=$VPC_ID" --query 'Subnets[0].SubnetId' --output text 2>/dev/null)
+            PUBLIC_RT=$(aws ec2 describe-route-tables --filters "Name=tag:Name,Values=smartgrid-default-public-rt" "Name=vpc-id,Values=$VPC_ID" --query 'RouteTables[0].RouteTableId' --output text 2>/dev/null)
+            PRIV_RT=$(aws ec2 describe-route-tables --filters "Name=tag:Name,Values=smartgrid-default-private-rt" "Name=vpc-id,Values=$VPC_ID" --query 'RouteTables[0].RouteTableId' --output text 2>/dev/null)
+            DB_RT=$(aws ec2 describe-route-tables --filters "Name=tag:Name,Values=smartgrid-default-db-rt" "Name=vpc-id,Values=$VPC_ID" --query 'RouteTables[0].RouteTableId' --output text 2>/dev/null)
+            tf_import "module.smartgrid_core.aws_route_table_association.public_a"    "${PUBLIC_A}/${PUBLIC_RT}"
+            tf_import "module.smartgrid_core.aws_route_table_association.public_b"    "${PUBLIC_B}/${PUBLIC_RT}"
+            tf_import "module.smartgrid_core.aws_route_table_association.private_app_a" "${PRIV_A}/${PRIV_RT}"
+            tf_import "module.smartgrid_core.aws_route_table_association.private_app_b" "${PRIV_B}/${PRIV_RT}"
+            tf_import "module.smartgrid_core.aws_route_table_association.db_a"       "${DB_A}/${DB_RT}"
+            tf_import "module.smartgrid_core.aws_route_table_association.db_b"       "${DB_B}/${DB_RT}"
+
+            FLOW_LOG_ID=$(aws ec2 describe-flow-logs \
+              --filter "Name=resource-id,Values=$VPC_ID" \
+              --query 'FlowLogs[0].FlowLogId' --output text 2>/dev/null)
+            tf_import "module.smartgrid_core.aws_flow_log.vpc" "$FLOW_LOG_ID"
+          fi
+
+          # ── Security Groups ────────────────────────────────────────────────
+          for SG_NAME in smartgrid-default-alb-sg bastion-sg backend-sg db-sg; do
+            SG_ID=$(aws ec2 describe-security-groups \
+              --filters "Name=group-name,Values=${SG_NAME}" \
+              --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null)
+            case "$SG_NAME" in
+              smartgrid-default-alb-sg) TF_ADDR="module.smartgrid_core.aws_security_group.alb_sg" ;;
+              bastion-sg)  TF_ADDR="module.smartgrid_core.aws_security_group.bastion_sg" ;;
+              backend-sg)  TF_ADDR="module.smartgrid_core.aws_security_group.backend_sg" ;;
+              db-sg)       TF_ADDR="module.smartgrid_core.aws_security_group.db_sg" ;;
+            esac
+            tf_import "$TF_ADDR" "$SG_ID"
+          done
+
+          # ── IAM Roles (fixed names) ────────────────────────────────────────
+          tf_import "module.smartgrid_core.aws_iam_role.backup_role"          "smartgrid-default-backup-role"
+          tf_import "module.smartgrid_core.aws_iam_role.cloudtrail_cw_role"   "smartgrid-default-cloudtrail-cw-role"
+          tf_import "module.smartgrid_core.aws_iam_role.eks_cluster_role"     "smartgrid-default-eks-cluster-role"
+          tf_import "module.smartgrid_core.aws_iam_role.eks_node_role"        "smartgrid-default-eks-node-role"
+          tf_import "module.smartgrid_core.aws_iam_role.vpc_flow_logs_role"   "smartgrid-default-vpc-flow-logs-role"
+          tf_import "module.smartgrid_core.aws_iam_role.eks_pod_role"         "smartgrid-default-eks-pod-role"
+          tf_import "module.smartgrid_core.aws_iam_role.cluster_autoscaler"   "smartgrid-default-cluster-autoscaler"
+
+          # IAM Roles with random suffix
+          BACKEND_ROLE=$(aws iam list-roles \
+            --query "Roles[?starts_with(RoleName,'smartgrid-default-backend-role-')].RoleName|[0]" \
+            --output text 2>/dev/null)
+          tf_import "module.smartgrid_core.aws_iam_role.backend_role" "$BACKEND_ROLE"
+
+          # Instance Profile
+          BACKEND_PROF=$(aws iam list-instance-profiles \
+            --query "InstanceProfiles[?starts_with(InstanceProfileName,'smartgrid-default-backend-profile-')].InstanceProfileName|[0]" \
+            --output text 2>/dev/null)
+          tf_import "module.smartgrid_core.aws_iam_instance_profile.backend_profile" "$BACKEND_PROF"
+
+          # ── IAM Policies ───────────────────────────────────────────────────
+          LBC_ARN=$(aws iam list-policies --scope Local \
+            --query "Policies[?PolicyName=='AWSLoadBalancerControllerIAMPolicy-default'].Arn|[0]" \
+            --output text 2>/dev/null)
+          tf_import "module.smartgrid_core.aws_iam_policy.aws_load_balancer_controller" "$LBC_ARN"
+
+          CA_ARN=$(aws iam list-policies --scope Local \
+            --query "Policies[?PolicyName=='smartgrid-default-cluster-autoscaler'].Arn|[0]" \
+            --output text 2>/dev/null)
+          tf_import "module.smartgrid_core.aws_iam_policy.cluster_autoscaler" "$CA_ARN"
+
+          BP_ARN=$(aws iam list-policies --scope Local \
+            --query "Policies[?starts_with(PolicyName,'smartgrid-default-backend-policy-')].Arn|[0]" \
+            --output text 2>/dev/null)
+          tf_import "module.smartgrid_core.aws_iam_policy.backend_policy" "$BP_ARN"
+
+          # ── CloudWatch Log Groups ──────────────────────────────────────────
+          tf_import "module.smartgrid_core.aws_cloudwatch_log_group.cloudtrail"     "/aws/cloudtrail/smartgrid-default"
+          tf_import "module.smartgrid_core.aws_cloudwatch_log_group.eks"            "/aws/eks/smartgrid-default-cluster/cluster"
+          tf_import "module.smartgrid_core.aws_cloudwatch_log_group.vpc_flow_logs"  "/aws/vpc/flowlogs/smartgrid-default"
+
+          # ── ECR Repositories ───────────────────────────────────────────────
+          for SVC in auth-service consumer-service meter-service billing-service alert-service ai-assistant-service frontend; do
+            tf_import "module.smartgrid_core.aws_ecr_repository.smartgrid_repos[\"${SVC}\"]" "smartgrid-default-${SVC}"
+          done
+
+          # ── S3 Buckets ─────────────────────────────────────────────────────
+          FRONTEND_BUCKET=$(aws s3api list-buckets \
+            --query "Buckets[?starts_with(Name,'smartgrid-default-frontend-bucket-')].Name|[0]" \
+            --output text 2>/dev/null)
+          tf_import "module.smartgrid_core.aws_s3_bucket.frontend_bucket" "$FRONTEND_BUCKET"
+          tf_import "module.smartgrid_core.aws_s3_bucket.bills_bucket" "$BILLS_BUCKET"
+
+          CT_BUCKET=$(aws s3api list-buckets \
+            --query "Buckets[?starts_with(Name,'smartgrid-default-cloudtrail-')].Name|[0]" \
+            --output text 2>/dev/null)
+          tf_import "module.smartgrid_core.aws_s3_bucket.cloudtrail_bucket" "$CT_BUCKET"
+
+          # ── KMS ────────────────────────────────────────────────────────────
+          tf_import "module.smartgrid_core.aws_kms_alias.s3_key_alias" "alias/smartgrid-s3-key"
+          KMS_ARN=$(aws kms describe-key --key-id alias/smartgrid-s3-key \
+            --query 'KeyMetadata.Arn' --output text 2>/dev/null)
+          tf_import "module.smartgrid_core.aws_kms_key.s3_key" "$KMS_ARN"
+
+          # ── ALB & Target Groups ────────────────────────────────────────────
+          ALB_ARN=$(aws elbv2 describe-load-balancers \
+            --names smartgrid-default-external-alb \
+            --query 'LoadBalancers[0].LoadBalancerArn' --output text 2>/dev/null)
+          tf_import "module.smartgrid_core.aws_lb.external_alb" "$ALB_ARN"
+
+          for TG in tg-auth tg-consumer tg-meter tg-billing tg-alert tg-assistant; do
+            TG_ARN=$(aws elbv2 describe-target-groups --names "$TG" \
+              --query 'TargetGroups[0].TargetGroupArn' --output text 2>/dev/null)
+            case "$TG" in
+              tg-auth)      TF="tg_auth" ;;
+              tg-consumer)  TF="tg_consumer" ;;
+              tg-meter)     TF="tg_meter" ;;
+              tg-billing)   TF="tg_billing" ;;
+              tg-alert)     TF="tg_alert" ;;
+              tg-assistant) TF="tg_assistant" ;;
+            esac
+            tf_import "module.smartgrid_core.aws_lb_target_group.${TF}" "$TG_ARN"
+          done
+
+          # ── Backup ─────────────────────────────────────────────────────────
+          tf_import "module.smartgrid_core.aws_backup_vault.main" "smartgrid-default-backup-vault"
+
+          # ── RDS ────────────────────────────────────────────────────────────
+          tf_import "module.smartgrid_core.aws_db_subnet_group.db_subnet_group" "smartgrid-default-db-subnet-group"
+          RDS_ID=$(aws rds describe-db-instances \
+            --query "DBInstances[?DBInstanceIdentifier=='smartgrid-default-rds-db'].DBInstanceIdentifier|[0]" \
+            --output text 2>/dev/null)
+          tf_import "module.smartgrid_core.aws_db_instance.database" "$RDS_ID"
+
+          # ── SQS Queues ─────────────────────────────────────────────────────
+          for Q in low-balance-dlq disconnection-dlq low-balance-queue disconnection-queue; do
+            Q_URL=$(aws sqs get-queue-url --queue-name "smartgrid-default-${Q}" \
+              --query 'QueueUrl' --output text 2>/dev/null)
+            case "$Q" in
+              low-balance-dlq)     TF="low_balance_dlq" ;;
+              disconnection-dlq)   TF="disconnection_dlq" ;;
+              low-balance-queue)   TF="low_balance" ;;
+              disconnection-queue) TF="disconnection" ;;
+            esac
+            tf_import "module.smartgrid_core.aws_sqs_queue.${TF}" "$Q_URL"
+          done
+
+          # ── SNS Topics ─────────────────────────────────────────────────────
+          LOW_SNS=$(aws sns list-topics \
+            --query "Topics[?contains(TopicArn,'smartgrid-default-low-balance-alerts-')].TopicArn|[0]" \
+            --output text 2>/dev/null)
+          tf_import "module.smartgrid_core.aws_sns_topic.low_balance" "$LOW_SNS"
+
+          DISC_SNS=$(aws sns list-topics \
+            --query "Topics[?contains(TopicArn,'smartgrid-default-disconnection-notices-')].TopicArn|[0]" \
+            --output text 2>/dev/null)
+          tf_import "module.smartgrid_core.aws_sns_topic.disconnection" "$DISC_SNS"
+
+          # ── GuardDuty ──────────────────────────────────────────────────────
+          GD_ID=$(aws guardduty list-detectors \
+            --query 'DetectorIds[0]' --output text 2>/dev/null)
+          tf_import "module.smartgrid_core.aws_guardduty_detector.main" "$GD_ID"
+
+          # ── EKS Cluster & Node Group ───────────────────────────────────────
+          tf_import "module.smartgrid_core.aws_eks_cluster.eks" "smartgrid-default-cluster"
+
+          OIDC_ARN=$(aws iam list-open-id-connect-providers \
+            --query "OpenIDConnectProviderList[?contains(Arn,'oidc.eks.ap-south-1')].Arn|[0]" \
+            --output text 2>/dev/null)
+          tf_import "module.smartgrid_core.aws_iam_openid_connect_provider.eks" "$OIDC_ARN"
+
+          NODE_GROUP=$(aws eks list-nodegroups --cluster-name smartgrid-default-cluster \
+            --query 'nodegroups[0]' --output text 2>/dev/null)
+          tf_import "module.smartgrid_core.aws_eks_node_group.nodes" "smartgrid-default-cluster:${NODE_GROUP}"
+
+          # ── Secrets Manager ────────────────────────────────────────────────
+          SECRET_ARN=$(aws secretsmanager describe-secret \
+            --secret-id smartgrid-default/config \
+            --query 'ARN' --output text 2>/dev/null)
+          tf_import "module.smartgrid_core.aws_secretsmanager_secret.smartgrid_secret" "$SECRET_ARN"
+
+          echo "=== Import step complete ==="
+
       - name: Terraform Apply
         working-directory: ./terraform
         run: terraform apply -auto-approve
