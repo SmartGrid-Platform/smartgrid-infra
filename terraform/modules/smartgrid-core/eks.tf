@@ -42,6 +42,7 @@ resource "aws_eks_cluster" "eks" {
   name     = "smartgrid-${var.environment}-cluster"
   role_arn = aws_iam_role.eks_cluster_role.arn
 
+  bootstrap_self_managed_addons     = false
   enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
 
   vpc_config {

@@ -142,9 +142,9 @@ jobs:
             tf_import "module.smartgrid_core.random_string.suffix" "$SUFFIX"
 
           # ── VPC ────────────────────────────────────────────────────────────
-          VPC_ID=$(aws ec2 describe-vpcs \
-            --filters "Name=tag:Name,Values=smartgrid-default-vpc" \
-            --query 'Vpcs[0].VpcId' --output text 2>/dev/null)
+          # Derive VPC from the EKS cluster to avoid ambiguity when duplicate VPCs share the same Name tag
+          VPC_ID=$(aws eks describe-cluster --name smartgrid-default-cluster \
+            --query 'cluster.resourcesVpcConfig.vpcId' --output text 2>/dev/null)
           tf_import "module.smartgrid_core.aws_vpc.smartgrid_vpc" "$VPC_ID"
 
           if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ]; then
@@ -286,7 +286,7 @@ jobs:
           CT_BUCKET=$(aws s3api list-buckets \
             --query "Buckets[?starts_with(Name,'smartgrid-default-cloudtrail-')].Name|[0]" \
             --output text 2>/dev/null)
-          tf_import "module.smartgrid_core.aws_s3_bucket.cloudtrail_bucket" "$CT_BUCKET"
+          tf_import "module.smartgrid_core.aws_s3_bucket.cloudtrail_logs" "$CT_BUCKET"
 
           # ── KMS ────────────────────────────────────────────────────────────
           tf_import "module.smartgrid_core.aws_kms_alias.s3_key_alias" "alias/smartgrid-s3-key"
@@ -362,12 +362,12 @@ jobs:
           LOW_SNS=$(aws sns list-topics \
             --query "Topics[?contains(TopicArn,'smartgrid-default-low-balance-alerts-')].TopicArn|[0]" \
             --output text 2>/dev/null)
-          tf_import "module.smartgrid_core.aws_sns_topic.low_balance" "$LOW_SNS"
+          tf_import "module.smartgrid_core.module.sns_low_balance.aws_sns_topic.this[0]" "$LOW_SNS"
 
           DISC_SNS=$(aws sns list-topics \
             --query "Topics[?contains(TopicArn,'smartgrid-default-disconnection-notices-')].TopicArn|[0]" \
             --output text 2>/dev/null)
-          tf_import "module.smartgrid_core.aws_sns_topic.disconnection" "$DISC_SNS"
+          tf_import "module.smartgrid_core.module.sns_disconnection.aws_sns_topic.this[0]" "$DISC_SNS"
 
           # ── GuardDuty ──────────────────────────────────────────────────────
           GD_ID=$(aws guardduty list-detectors \
@@ -412,7 +412,7 @@ jobs:
             BACKUP_SEL_ID=$(aws backup list-backup-selections \
               --backup-plan-id "$BACKUP_PLAN_ID" \
               --query "BackupSelectionsList[0].SelectionId" --output text 2>/dev/null)
-            tf_import "module.smartgrid_core.aws_backup_selection.rds" "${BACKUP_PLAN_ID}:${BACKUP_SEL_ID}"
+            tf_import "module.smartgrid_core.aws_backup_selection.rds" "${BACKUP_PLAN_ID}|${BACKUP_SEL_ID}"
           fi
 
           echo "=== Import step complete ==="
